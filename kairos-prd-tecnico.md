@@ -518,9 +518,19 @@ equivocado** sin avisar, y se toman decisiones de gain staging sobre datos malos
 > Figma: `input-status` (= `icon/dot-status` + label).
 
 - **Frontera en el suelo de la escala (−60 dB)**, coherente con la zona "Residual"
-  (§7.4). **Debounce** (≥ 2 s por debajo) para volver a `noSignal`, de modo que un bus
-  genuinamente bajo (un pad a −50) lea `receiving`. `clipping` **prevalece** sobre el
-  color mientras dure su cola de 2 s.
+  (§7.4). Transición **asimétrica**: entra en `receiving` **de inmediato** con la primera
+  muestra `> −60 dB` (sin debounce); vuelve a `noSignal` solo tras **≥ 2 s** sostenidos
+  `≤ −60 dB` (debounce), de modo que un bus genuinamente bajo (un pad a −50) lea
+  `receiving`. `clipping` **prevalece** mientras dure su cola de 2 s.
+- **Estado de arranque (bootstrap, resuelto F1-SPEC):** al activar una lane
+  (`disabled → enabled`), el estado inicial es **`noSignal`** hasta la primera muestra
+  `> −60 dB`, que la lleva de inmediato a `receiving`. No hace falta temporizador de
+  arranque: la asimetría de la transición ya lo resuelve.
+- **Sin banda extra de histéresis en dB (resuelto F1-SPEC):** el único suavizado del
+  estado de señal es el **debounce temporal de 2 s** (más la cola de clip de 2 s). El
+  umbral −60 dB es una frontera dura para entrar en `receiving`. La histéresis de 1.5 dB
+  de §15.2 es **otro mecanismo** (color del **borde** del medidor vs target), no aplica
+  al dot de Input Status.
 - Estado interno barato en `DynamicsCore` (`LaneInputStatus`), umbral sobre datos ya
   calculados; no es audio nuevo.
 

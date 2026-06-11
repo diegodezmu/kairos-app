@@ -31,7 +31,7 @@
 ## Latitud de decisión
 
 - La tarea de implementación puede escoger structs, classes o actors concretos para `InternalClock`, `MIDIClock` y `AbletonLinkClock`.
-- La captura del `frozenOriginBeat` puede vivir en un coordinador o seam owner, pero no puede alterar el contrato público de `ClockSource`.
+- La captura del `frozenOriginBeat` puede vivir en un coordinador o seam owner, pero no puede alterar el contrato público de `ClockSource`. **Guía para F1-TD:** constrúyela como un componente puro y testeable (p. ej. `OriginLatch`) que observe `hasOrigin`/`originHostTime` y latchee `originBeat = beat(atHostTime: originHostTime)` **una sola vez**, con una tabla de test de regresión de F0-1 (tras un cambio de tempo el `originBeat` no se recalcula y la iteración no retrocede). La arquitectura ya previene el bug estructuralmente —`CycleEngine` no puede recalcular el origen—, pero el latch merece su propio test.
 - La estrategia de freeze cuando `isPlaying == false` pertenece a la capa que consulta el reloj; el contrato aquí solo exige conservar la última posición válida.
 
 ## Fuera de alcance

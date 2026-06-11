@@ -23,7 +23,7 @@
 ## Criterios de aceptación
 
 - Tablas de test para §7.2 fijan RMS, peak y clip esperado para señales de entrada conocidas.
-- Tablas de test para §7.7.2 fijan transiciones `disabled`/`noSignal`/`receiving`/`clipping`, incluyendo debounce de 2 s y cola de clip de 2 s.
+- Tablas de test para §7.7.2 fijan transiciones `disabled`/`noSignal`/`receiving`/`clipping`, incluyendo: estado inicial `noSignal` al activar una lane (bootstrap), entrada inmediata a `receiving` con la primera muestra `> −60 dBFS`, debounce de 2 s para volver a `noSignal`, y cola de clip de 2 s. Sin banda extra de histéresis en dB.
 - `AudioEngine` no puede exponer un camino directo audio→render; la costura pública es `DynamicsPublisher`.
 - El paquete compila para macOS e iOS sin frameworks de UI.
 

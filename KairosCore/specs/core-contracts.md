@@ -18,12 +18,18 @@
 - El reloj, el audio real y el networking real quedan fuera de `F1-SPEC`.
 - Las tablas de test son el criterio de aceptación de `F1-TD` y `F1-DC`.
 
-## DECISION-NEEDED
+## DECISION-NEEDED (resueltos en el freeze)
 
-- `LaneSignalState` no define el estado bootstrap exacto al pasar de `disabled` a lane activa con menos de 2 s de silencio acumulado.
-  Impacto: `F1-DC` necesita una decisión explícita para el primer instante tras activar una lane sin señal sostenida.
-- El prompt pide “histéresis” para `LaneSignalState`, pero el PRD §7.7.2 solo fija umbral `-60 dBFS`, debounce de 2 s y cola de clip de 2 s.
-  Impacto: no debe inventarse una banda extra de histéresis en dB para el estado de señal sin abrir un `CONTRACT-CHANGE`.
+- **Bootstrap de `LaneSignalState` — RESUELTO.** Al activar una lane
+  (`disabled → enabled`) el estado inicial es `noSignal`; pasa a `receiving` de
+  inmediato con la primera muestra `> −60 dBFS` (entrada sin debounce); vuelve a
+  `noSignal` solo tras ≥ 2 s `≤ −60 dBFS`. No hay temporizador de arranque: la
+  asimetría de la transición lo cubre. `F1-DC` implementa esto. (PRD §7.7.2.)
+- **Histéresis de `LaneSignalState` — RESUELTO: no hay banda extra en dB.** El único
+  suavizado es el debounce temporal de 2 s + la cola de clip de 2 s; el umbral −60 dB
+  es frontera dura para `receiving`. La histéresis de 1.5 dB de §15.2 es del color del
+  **borde** del medidor (target), mecanismo distinto, y no aplica al Input Status.
+  El agente acertó al no inventar banda; queda confirmado, sin `CONTRACT-CHANGE`.
 
 ## Archivos congelados por este freeze
 
