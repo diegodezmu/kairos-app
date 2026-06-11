@@ -1,0 +1,31 @@
+Audio:
+
+    Devices:
+
+        Micrófono de “iPhone de Diego”:
+
+          Input Channels: 1
+          Manufacturer: Apple Inc.
+          Current SampleRate: 48000
+          Transport: Unknown
+          Input Source: Default
+
+        Micrófono del MacBook Pro:
+
+          Default Input Device: Yes
+          Input Channels: 1
+          Manufacturer: Apple Inc.
+          Current SampleRate: 48000
+          Transport: Built-in
+          Input Source: Micrófono del MacBook Pro
+
+        Altavoces del MacBook Pro:
+
+          Default Output Device: Yes
+          Default System Output Device: Yes
+          Manufacturer: Apple Inc.
+          Output Channels: 2
+          Current SampleRate: 48000
+          Transport: Built-in
+          Output Source: Altavoces del MacBook Pro
+
