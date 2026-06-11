@@ -10,6 +10,16 @@ Audio:
           Transport: Unknown
           Input Source: Default
 
+        BlackHole 16ch:
+
+          Input Channels: 16
+          Manufacturer: Existential Audio Inc.
+          Output Channels: 16
+          Current SampleRate: 48000
+          Transport: Virtual
+          Input Source: Default
+          Output Source: Default
+
         Micrófono del MacBook Pro:
 
           Default Input Device: Yes
