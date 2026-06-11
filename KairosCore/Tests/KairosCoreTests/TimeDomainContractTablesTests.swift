@@ -3,6 +3,7 @@ import XCTest
 
 final class TimeDomainContractTablesTests: XCTestCase {
     func testSection531_currentStepAndCycleIterationTable() throws {
+        let engine = DefaultCycleEngine()
         let cases: [PositionTableRow] = [
             .init(
                 name: "origin beat starts at step zero",
@@ -61,10 +62,21 @@ final class TimeDomainContractTablesTests: XCTestCase {
         ]
 
         XCTAssertEqual(cases.count, 6)
-        throw XCTSkip("F1-SPEC freeze only. Implement CycleEngine table runner in F1-TD.")
+        for row in cases {
+            let config = CycleConfig(slot: .one, stepNumber: row.stepNumber, pulse: row.pulse)
+            let state = engine.resolveState(
+                for: config,
+                beat: row.beat,
+                frozenOriginBeat: row.frozenOriginBeat
+            )
+
+            XCTAssertEqual(state.currentStep, row.expectedCurrentStep, row.name)
+            XCTAssertEqual(state.cycleIteration, row.expectedCycleIteration, row.name)
+        }
     }
 
     func testSection551_resetDetectionTable() throws {
+        let detector = DefaultResetDetector()
         let cases: [ResetTableRow] = [
             .init(
                 name: "general reset marks every active cycle when all wrap together",
@@ -117,10 +129,17 @@ final class TimeDomainContractTablesTests: XCTestCase {
         ]
 
         XCTAssertEqual(cases.count, 3)
-        throw XCTSkip("F1-SPEC freeze only. Implement ResetDetector table runner in F1-TD.")
+        for row in cases {
+            XCTAssertEqual(
+                detector.detectResets(previous: row.previous, current: row.current),
+                row.expectedMarks,
+                row.name
+            )
+        }
     }
 
     func testSection552_anticipationTable() throws {
+        let engine = DefaultCycleEngine()
         let cases: [AnticipationTableRow] = [
             .init(stepNumber: .one, expectedRange: nil),
             .init(stepNumber: .two, expectedRange: nil),
@@ -133,7 +152,15 @@ final class TimeDomainContractTablesTests: XCTestCase {
         ]
 
         XCTAssertEqual(cases.count, 8)
-        throw XCTSkip("F1-SPEC freeze only. Implement anticipation lookup in F1-TD.")
+        for row in cases {
+            let state = engine.resolveState(
+                for: CycleConfig(slot: .one, stepNumber: row.stepNumber, pulse: .oneQuarter),
+                beat: 0,
+                frozenOriginBeat: nil
+            )
+
+            XCTAssertEqual(state.anticipationRange, row.expectedRange, "\(row.stepNumber.rawValue) steps")
+        }
     }
 
     func testSection56_offsetConversionTable() throws {
@@ -145,7 +172,13 @@ final class TimeDomainContractTablesTests: XCTestCase {
         ]
 
         XCTAssertEqual(cases.count, 4)
-        throw XCTSkip("F1-SPEC freeze only. Implement Offset conversion in F1-TD.")
+        for row in cases {
+            XCTAssertEqual(
+                Offset(milliseconds: row.offsetMilliseconds).beats(atTempo: row.tempo),
+                row.expectedOffsetBeats,
+                accuracy: 0.000_000_1
+            )
+        }
     }
 }
 

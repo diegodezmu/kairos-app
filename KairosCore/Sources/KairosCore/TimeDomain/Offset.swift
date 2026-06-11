@@ -15,6 +15,6 @@ public struct Offset: Sendable, Equatable {
 
     /// Converts the local offset to beats using `offsetMs / 1000 * tempo / 60`.
     public func beats(atTempo tempo: Double) -> Double {
-        fatalError("Offset.beats(atTempo:) is a contract stub. Implementation belongs to F1-TD.")
+        (milliseconds / 1_000.0) * (tempo / 60.0)
     }
 }
