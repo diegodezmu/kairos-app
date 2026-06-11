@@ -347,18 +347,28 @@ Do not document or implement them as unrelated systems.
 ## Kairos Domain Color Tokens
 
 Grid and Level use a domain-specific color layer under `color/kairos/*`.
-The confirmed token names in the final file are:
 
-- `color/kairos/step-active`
-- `color/kairos/step-inactive`
-- `color/kairos/reset-combined`
-- `color/kairos/reset-general`
-- `color/kairos/anticipation`
-- `color/kairos/clip`
-- `color/kairos/level-in-target`
-- `color/kairos/level-out-target`
-- `color/kairos/meter-fill-body`
-- `color/kairos/meter-scale-line`
+> **Naming authority (corrected by F1-DESIGN-PROBE).** The real Figma library names
+> are **prefixed** (`grid-*`, `level-*`). The short names previously listed here were
+> informal. **Figma is authoritative for exact token names** — always resolve them via
+> the Figma MCP (`search_design_system` / `get_variable_defs`). See
+> `docs/design/figma-extraction-probe.md` for the confirmed names, values, node IDs and
+> the extraction pattern. Note the line-variant quirk: Figma names the general reset
+> `reset/general` (slash) in `line-md`/`line-sm`, but `grid-reset-general` elsewhere.
+
+Confirmed real names (from the probe) — Grid:
+
+- `color/kairos/grid-step-active` (`#f5f7fa`)
+- `color/kairos/grid-step-inactive` (`#24262b`)
+- `color/kairos/grid-reset-combined` (`#74d79a`)
+- `color/kairos/grid-reset-general` (`#aa82db`)
+- `color/kairos/grid-anticipation` (`#e98284`)
+
+Level (same `level-*` convention; resolve exact names/values via MCP):
+
+- `color/kairos/level-clip` (confirmed)
+- `level-in-target`, `level-out-target`, `meter-fill-body`, `meter-scale-line`
+  (semantic roles — confirm canonical names in Figma before binding)
 
 These are not generic status colors. They are domain colors and should remain the
 only color interface for Grid and Level logic.
