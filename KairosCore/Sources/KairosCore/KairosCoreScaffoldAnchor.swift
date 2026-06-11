@@ -1,1 +1,1 @@
-enum KairosCoreScaffoldAnchor {}
+public enum KairosCoreScaffoldAnchor {}
