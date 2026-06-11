@@ -35,7 +35,16 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
         ]
 
         XCTAssertEqual(cases.count, 4)
-        throw XCTSkip("F1-SPEC freeze only. Implement RMS/peak/clip measurement in F1-DC.")
+        for row in cases {
+            let laneSample = try measureLaneSample(from: row.samples)
+
+            XCTAssertEqual(laneSample.rmsLeft, row.expectedRMS, accuracy: 0.000_5, row.name)
+            XCTAssertEqual(laneSample.peakLeft, row.expectedPeak, accuracy: 0.000_5, row.name)
+            XCTAssertEqual(laneSample.clipLeft, row.expectedClip, row.name)
+            XCTAssertEqual(laneSample.rmsRight, 0, accuracy: 0.000_5, row.name)
+            XCTAssertEqual(laneSample.peakRight, 0, accuracy: 0.000_5, row.name)
+            XCTAssertFalse(laneSample.clipRight, row.name)
+        }
     }
 
     func testSection772_laneSignalStateTransitionsTable() throws {
@@ -142,7 +151,21 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
         ]
 
         XCTAssertEqual(cases.count, 9)
-        throw XCTSkip("F1-SPEC freeze only. Implement LaneSignalState evaluator in F1-DC.")
+        for row in cases {
+            let status = LaneSignalStateEvaluator.evaluate(
+                lane: .one,
+                previousState: row.previousState,
+                laneEnabled: row.laneEnabled,
+                maxRMSAmplitude: DynamicsDecibelScale.dbfsToAmplitude(row.maxRMSDBFS),
+                clipDetectedNow: row.clipDetectedNow,
+                millisecondsSinceLastAboveFloor: UInt64(row.millisecondsSinceLastAboveFloor),
+                millisecondsSinceLastClip: UInt64(row.millisecondsSinceLastClip),
+                channelLabel: "BlackHole 1-2"
+            )
+
+            XCTAssertEqual(status.state, row.expectedState, row.name)
+            XCTAssertEqual(status.displayLabel, row.expectedDisplayLabel, row.name)
+        }
     }
 }
 
@@ -164,4 +187,26 @@ private struct LaneSignalTransitionTableRow {
     var millisecondsSinceLastClip: Int
     var expectedState: LaneSignalState
     var expectedDisplayLabel: String
+}
+
+private func measureLaneSample(from samples: [Float]) throws -> LaneDynamicsSample {
+    let silence = Array(repeating: Float.zero, count: samples.count)
+    let channels = [
+        samples,
+        silence,
+        silence,
+        silence,
+        silence,
+        silence,
+        silence,
+        silence,
+    ]
+
+    let sample = try DefaultDynamicsMeter().measure(
+        channels: channels,
+        sampleRate: 48_000,
+        hostTime: 0,
+        sampleTime: Int64(samples.count)
+    )
+    return sample.lane1
 }
