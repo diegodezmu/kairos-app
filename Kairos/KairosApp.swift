@@ -4,6 +4,16 @@ import SwiftUI
 struct KairosApp: App {
     var body: some Scene {
         WindowGroup {
+            RootView()
+        }
+    }
+}
+
+private struct RootView: View {
+    var body: some View {
+        if RenderPerfSpike.isEnabled {
+            RenderPerfSpikeView()
+        } else {
             ContentView()
         }
     }

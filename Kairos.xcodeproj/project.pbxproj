@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		F10000000000000000000030 /* KairosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* KairosApp.swift */; };
+		F10000000000000000000031 /* RenderPerfSpike.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000014 /* RenderPerfSpike.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		F10000000000000000000010 /* Kairos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kairos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000013 /* KairosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KairosApp.swift; sourceTree = "<group>"; };
+		F10000000000000000000014 /* RenderPerfSpike.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderPerfSpike.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,6 +48,7 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000013 /* KairosApp.swift */,
+				F10000000000000000000014 /* RenderPerfSpike.swift */,
 			);
 			path = Kairos;
 			sourceTree = "<group>";
@@ -121,6 +124,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F10000000000000000000030 /* KairosApp.swift in Sources */,
+				F10000000000000000000031 /* RenderPerfSpike.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
