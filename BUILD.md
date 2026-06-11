@@ -17,5 +17,5 @@ Optional iOS validation for the package:
 
 ```sh
 cd KairosCore
-xcodebuild -scheme KairosCore-Package -destination 'generic/platform=iOS' build
+xcodebuild -scheme KairosCore -destination 'generic/platform=iOS' build
 ```
