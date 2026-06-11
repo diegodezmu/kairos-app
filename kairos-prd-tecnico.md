@@ -187,17 +187,43 @@ protocol ClockSource {
     func beat(atHostTime: UInt64) -> Double
     /// ¿El transporte está corriendo?
     var isPlaying: Bool { get }
-    /// Quantum/longitud de barra de referencia (beats). Link lo aporta; en
+    /// Quantum musical de transporte/fase (beats). Link lo aporta; en
     /// Internal/MIDI se deriva de la métrica configurada.
+    /// IMPORTANTE (F0-1): es el quantum de transporte, NO `cycleLengthBeats`.
+    /// Con D3 cada dispositivo tiene ciclos distintos; usar la longitud de ciclo
+    /// como quantum haría divergir el beat absoluto entre peers.
     var quantum: Double { get }
-    /// El origen (beat 0) está definido (transporte arrancado al menos una vez).
+    /// Host time del start de transporte compartido (ancla de origen). nil hasta
+    /// que se conoce un start. En Link puede inyectarse (ver adoptSharedOrigin).
+    var originHostTime: UInt64? { get }
+    /// El origen está definido: el peer conoce `originHostTime` Y ya ha congelado
+    /// su `originBeat` local.
     var hasOrigin: Bool { get }
+    /// Adopta un origen de transporte compartido externamente (late join).
+    /// Fase 2: el host time del start original llega por el canal propio Mac→iOS.
+    func adoptSharedOrigin(hostTime: UInt64)
 }
 ```
 
-`beat(atHostTime:)` es la pieza central: todo el grid es función de este valor
-(D2). Dos dispositivos con el mismo timeline producen la misma posición sin
-comunicarse.
+`beat(atHostTime:)` es la pieza central: todo el grid es función de este valor (D2).
+
+**Contrato de determinismo (congelado por F0-1, ver `docs/spikes/link-determinism.md`):**
+el grid usa `elapsedBeats = beat - originBeat`, donde `originBeat` se **captura una
+sola vez y se congela** (latched) en el instante en que el origen se vuelve conocido:
+`originBeat = beat(atHostTime: originHostTime)` **calculado una vez**. NUNCA se
+recalcula sobre la marcha — hacerlo tras un cambio de tempo hace **retroceder** la
+posición (el beat de Link es continuo, pero `beat(atHostTime:)` para tiempos pasados
+se re-mapea al cambiar el tempo). Con `originBeat` congelado, la continuidad y el
+determinismo multi-peer se preservan también tras cambios de tempo.
+
+Consecuencia: **dos dispositivos producen la misma posición sin comunicarse SOLO si
+comparten el mismo origen.** Esto se cumple cuando ambos estuvieron presentes en el
+mismo start de transporte. Un peer que entra a mitad de sesión **no** reconstruye la
+iteración de un ciclo largo solo con Link: queda en `hasOrigin == false` hasta el
+próximo start compartido, salvo que adopte el origen original vía
+`adoptSharedOrigin(hostTime:)` (en fase 2, ese host time viaja por el canal propio
+Mac→iOS, no por Link). Los `currentStep`/`cycleIteration` se calculan por §5.3.1 sobre
+ese `elapsedBeats` con `originBeat` latcheado.
 
 ### 5.2 Las tres fuentes y el transporte
 
@@ -317,13 +343,18 @@ inminente. Solo en ciclos de 8+ steps (en 1/2/4 se evita para no saturar):
 
 ### 5.7 Casos límite a cubrir en tests
 
-- Cambio de tempo en caliente (Link): la posición debe seguir siendo continua.
+- Cambio de tempo en caliente (Link): la posición debe seguir siendo continua
+  **usando `originBeat` congelado**. Test de regresión de F0-1: recalcular el origen
+  tras el cambio de tempo hace retroceder la iteración → prohibido.
 - Transporte detenido (`isPlaying == false`): el grid se congela en su última
   posición, no se resetea solo.
 - `hasOrigin == false` (Link activo sin start aún): estado neutro, sin pintar
   posición arbitraria.
+- **Late join (Link, peer entra a mitad de sesión):** `hasOrigin == false` hasta el
+  próximo start compartido o hasta `adoptSharedOrigin(hostTime:)`. No se inventa
+  iteración con origen local (provocaría desfase inmediato; ver F0-1).
 - Ciclo recién activado a mitad de toma: se incorpora con su fase correcta
-  (determinista), no desde 0.
+  (determinista) respecto al `originBeat` ya congelado, no desde 0.
 - Pérdida de reloj externo: ver §11.
 
 ---
@@ -758,6 +789,12 @@ Set expuesto en UI, de 1/16 a 64: **1/16, 1/8, 1/4, 1/2, 1, 2, 4, 8, 16, 32, 64*
 
 - **Sincronía:** cada **iPhone/iPad** es **peer Link nativo** (LinkKit). No depende
   del Mac para el tempo. Tempo y transporte **read‑only por defecto** (Ableton maestro).
+- **Origen compartido para ciclos largos (F0-1):** un dispositivo que entra a mitad de
+  toma **no** reconstruye la iteración de un ciclo largo solo con Link. El Mac debe
+  enviar el `originHostTime` del start compartido por el **canal propio** (mensaje de
+  sesión, junto a la telemetría) y el dispositivo lo adopta con
+  `adoptSharedOrigin(hostTime:)`. Sin eso, `hasOrigin=false` hasta el próximo start
+  general. Es additivo sobre el canal Mac→iOS que ya existe para la dinámica.
 - **Config de grid:** **independiente por dispositivo** (D3). Link no transporta la
   definición de ciclos; cada móvil configura los suyos. El timeline común garantiza
   que ciclos iguales salgan alineados.
