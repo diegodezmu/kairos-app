@@ -1,0 +1,55 @@
+# Kairos Link determinism spike
+binaryPath=Packages/KairosLinkSDK/.build/arm64-apple-macosx/debug/KairosLinkDeterminismSpikeCLI
+testCycle=128 steps x pulse 1/4 = 32 beats
+
+=== Scenario 1: start/stop sync OFF ===
+Peer A-off starts playback with Link enabled but start/stop sync disabled.
+  A-off peers=1 tempo=120.000 playing=true startSync=false startMicros=43696517513 sampleMicros=43697321249 :: q4 beat=-2.156730 phase=1.843270 elapsed=n/a step=n/a iter=n/a | q32 beat=1.843270 phase=1.843270 elapsed=n/a step=n/a iter=n/a
+  B-off peers=1 tempo=120.000 playing=false startSync=false startMicros=43696411386 sampleMicros=43697321986 :: q4 beat=1.844738 phase=1.844738 elapsed=n/a step=n/a iter=n/a | q32 beat=1.844738 phase=1.844738 elapsed=n/a step=n/a iter=n/a
+RESULT start/stop OFF: A-off playing=true | B-off playing=false. Sin start/stop sync no aparece un origen de transporte compartido.
+
+=== Scenario 2: shared start, late join, long cycle, tempo change ===
+Peer A starts playback with start/stop sync enabled.
+  polling shared start
+    A peers=1 tempo=120.000 playing=true startSync=true startMicros=43698108215 sampleMicros=43698108398 :: q4 beat=-3.756742 phase=0.243258 elapsed=n/a step=n/a iter=n/a | q32 beat=0.243258 phase=0.243258 elapsed=n/a step=n/a iter=n/a
+    B peers=1 tempo=120.000 playing=false startSync=true startMicros=43698002141 sampleMicros=43698108536 :: q4 beat=0.243522 phase=0.243522 elapsed=n/a step=n/a iter=n/a | q32 beat=0.243522 phase=0.243522 elapsed=n/a step=n/a iter=n/a
+Shared transport start observed at hostMicros≈43698108218 (spread=6us)
+SAMPLE present-peers @ +8.5 beats
+  A peers=1 tempo=120.000 playing=true startSync=true startMicros=43698108215 sampleMicros=43702358218 :: q4 beat=4.742898 phase=0.742898 elapsed=8.500000 step=34 iter=0 | q32 beat=8.742898 phase=8.742898 elapsed=8.500000 step=34 iter=0
+  B peers=1 tempo=120.000 playing=true startSync=true startMicros=43698108221 sampleMicros=43702358218 :: q4 beat=8.742886 phase=0.742886 elapsed=8.500000 step=34 iter=0 | q32 beat=8.742886 phase=8.742886 elapsed=8.500000 step=34 iter=0
+  q4 rawBeatSpread=3.999988 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=34, B=34] iterations[A=0, B=0]
+  q32 rawBeatSpread=0.000012 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=34, B=34] iterations[A=0, B=0]
+Spawning late peer C while the session is already running.
+Late join snapshot:
+  C peers=2 tempo=120.000 playing=false startSync=true startMicros=43702386557 sampleMicros=43702492573 :: q4 beat=1.011572 phase=1.011572 elapsed=n/a step=n/a iter=n/a | q32 beat=9.011572 phase=9.011572 elapsed=n/a step=n/a iter=n/a
+Late peer C did not inherit the original shared transport start. Switching C to local transport mode (start/stop sync OFF) to measure a local late origin.
+  local-start C :: C peers=2 tempo=120.000 playing=true startSync=false startMicros=43702493094 sampleMicros=43702493119 :: q4 beat=-2.987336 phase=1.012664 elapsed=n/a step=n/a iter=n/a | q32 beat=9.012664 phase=9.012664 elapsed=n/a step=n/a iter=n/a
+SAMPLE late-join with shared original origin
+  A peers=2 tempo=120.000 playing=true startSync=true startMicros=43698108215 sampleMicros=43708358218 :: q4 beat=16.742898 phase=0.742898 elapsed=20.500000 step=82 iter=0 | q32 beat=20.742898 phase=20.742898 elapsed=20.500000 step=82 iter=0
+  B peers=2 tempo=120.000 playing=true startSync=true startMicros=43698108221 sampleMicros=43708358218 :: q4 beat=20.742886 phase=0.742886 elapsed=20.500000 step=82 iter=0 | q32 beat=20.742886 phase=20.742886 elapsed=20.500000 step=82 iter=0
+  C peers=2 tempo=120.000 playing=true startSync=false startMicros=43702493094 sampleMicros=43708358218 :: q4 beat=8.742862 phase=0.742862 elapsed=20.500000 step=82 iter=0 | q32 beat=20.742862 phase=20.742862 elapsed=20.500000 step=82 iter=0
+  q4 rawBeatSpread=12.000024 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=82, B=82, C=82] iterations[A=0, B=0, C=0]
+  q32 rawBeatSpread=0.000036 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=82, B=82, C=82] iterations[A=0, B=0, C=0]
+SAMPLE late-join with C local origin
+  C peers=2 tempo=120.000 playing=true startSync=false startMicros=43702493094 sampleMicros=43708358218 :: q4 beat=8.742862 phase=0.742862 elapsed=11.730248 step=46 iter=0 | q32 beat=20.742862 phase=20.742862 elapsed=11.730248 step=46 iter=0
+SAMPLE long-cycle boundary crossed (>32 beats)
+  A peers=2 tempo=120.000 playing=true startSync=true startMicros=43698108215 sampleMicros=43714858218 :: q4 beat=29.742898 phase=1.742898 elapsed=33.500000 step=6 iter=1 | q32 beat=33.742898 phase=1.742898 elapsed=33.500000 step=6 iter=1
+  B peers=2 tempo=120.000 playing=true startSync=true startMicros=43698108221 sampleMicros=43714858218 :: q4 beat=33.742886 phase=1.742886 elapsed=33.500000 step=6 iter=1 | q32 beat=33.742886 phase=1.742886 elapsed=33.500000 step=6 iter=1
+  C peers=2 tempo=120.000 playing=true startSync=false startMicros=43702493094 sampleMicros=43714858218 :: q4 beat=21.742862 phase=1.742862 elapsed=33.500000 step=6 iter=1 | q32 beat=33.742862 phase=1.742862 elapsed=33.500000 step=6 iter=1
+  q4 rawBeatSpread=12.000024 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=6, B=6, C=6] iterations[A=1, B=1, C=1]
+  q32 rawBeatSpread=0.000036 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=6, B=6, C=6] iterations[A=1, B=1, C=1]
+Changing tempo live from 120 BPM to 90 BPM via peer A.
+Tempo compartido actualizado a 90.000 BPM
+SAMPLE after hot tempo change
+  A peers=2 tempo=90.000 playing=true startSync=true startMicros=43692523948 sampleMicros=43718967959 :: q4 beat=35.908889 phase=3.908889 elapsed=31.289596 step=125 iter=0 | q32 beat=39.908889 phase=7.908889 elapsed=31.289596 step=125 iter=0
+  B peers=2 tempo=90.000 playing=true startSync=true startMicros=43692523954 sampleMicros=43718967959 :: q4 beat=39.908880 phase=3.908880 elapsed=31.289596 step=125 iter=0 | q32 beat=39.908880 phase=7.908880 elapsed=31.289596 step=125 iter=0
+  C peers=2 tempo=90.000 playing=true startSync=false startMicros=43702493094 sampleMicros=43718967959 :: q4 beat=27.908862 phase=3.908862 elapsed=31.289596 step=125 iter=0 | q32 beat=39.908862 phase=7.908862 elapsed=31.289596 step=125 iter=0
+  q4 rawBeatSpread=12.000018 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=125, B=125, C=125] iterations[A=0, B=0, C=0]
+  q32 rawBeatSpread=0.000027 elapsedSpread=0.000000 stepMatch=true iterationMatch=true steps[A=125, B=125, C=125] iterations[A=0, B=0, C=0]
+SAMPLE after hot tempo change (frozen originBeat per peer)
+  q4 elapsedSpread=0.000009 stepMatch=true iterationMatch=true :: A beat=35.908889 originBeat=-3.757102 elapsed=39.665991 step=30 iter=1 | B beat=39.908880 originBeat=0.242886 elapsed=39.665994 step=30 iter=1 | C beat=27.908862 originBeat=-11.757138 elapsed=39.666000 step=30 iter=1
+  q32 elapsedSpread=0.000009 stepMatch=true iterationMatch=true :: A beat=39.908889 originBeat=0.242898 elapsed=39.665991 step=30 iter=1 | B beat=39.908880 originBeat=0.242886 elapsed=39.665994 step=30 iter=1 | C beat=39.908862 originBeat=0.242862 elapsed=39.666000 step=30 iter=1
+Post-tempo startTimeMicros snapshot: A=43692523948, B=43692523954, C=43702493094 | originalSharedOrigin=43698108218
+RESULT summary: two peers present at the shared start stayed aligned on currentStep and cycleIteration across a 32-beat cycle. After a live tempo change, continuity only held when each peer reused a frozen originBeat captured before the tempo change. The late peer only became comparable once it used the original shared start host time instead of its own late local start.
+
+SPIKE STATUS: OK

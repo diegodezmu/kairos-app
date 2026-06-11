@@ -16,6 +16,10 @@ let package = Package(
             name: "KairosLinkSmokeCLI",
             targets: ["KairosLinkSmokeCLI"]
         ),
+        .executable(
+            name: "KairosLinkDeterminismSpikeCLI",
+            targets: ["KairosLinkDeterminismSpikeCLI"]
+        ),
     ],
     targets: [
         .target(
@@ -45,6 +49,10 @@ let package = Package(
         .executableTarget(
             name: "KairosLinkSmokeCLI",
             dependencies: ["KairosLinkSDK"]
+        ),
+        .executableTarget(
+            name: "KairosLinkDeterminismSpikeCLI",
+            dependencies: ["CAbletonLink"]
         ),
     ],
     cxxLanguageStandard: .cxx17
