@@ -1,0 +1,3 @@
+[submodule "Packages/KairosLinkSDK/Vendor/link"]
+	path = Packages/KairosLinkSDK/Vendor/link
+	url = https://github.com/ableton/link

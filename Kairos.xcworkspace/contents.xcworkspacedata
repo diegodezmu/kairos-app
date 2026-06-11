@@ -4,4 +4,7 @@
    <FileRef
       location = "group:Kairos.xcodeproj">
    </FileRef>
+   <FileRef
+      location = "group:Packages/KairosLinkSDK">
+   </FileRef>
 </Workspace>
