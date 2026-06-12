@@ -1,4 +1,3 @@
-import Darwin
 import SwiftUI
 import KairosCore
 
@@ -334,53 +333,6 @@ private enum GridStepVisualState {
     }
 }
 
-/// Bridges to KairosCore's ResetDetector implementation without duplicating
-/// reset-detection rules in the app target.
-private struct KairosCoreResetDetectorBridge: ResetDetector {
-    func detectResets(
-        previous: [CycleState],
-        current: [CycleState]
-    ) -> [CycleResetState] {
-        Self.detectResets(previous, current, Self.makeDetector())
-    }
-
-    private struct DetectorShim {}
-
-    private typealias MakeDetectorFn = @convention(thin) () -> DetectorShim
-    private typealias DetectResetsFn = @convention(thin) (
-        [CycleState],
-        [CycleState],
-        DetectorShim
-    ) -> [CycleResetState]
-
-    private static let constructorSymbol = "$s10KairosCore20DefaultResetDetectorVACycfC"
-    private static let detectSymbol = "$s10KairosCore20DefaultResetDetectorV12detectResets8previous7currentSayAA05CycleD5StateVGSayAA0jK0VG_ALtF"
-
-    private static let makeDetector: MakeDetectorFn = loadSymbol(
-        named: constructorSymbol,
-        as: MakeDetectorFn.self
-    )
-
-    private static let detectResets: DetectResetsFn = loadSymbol(
-        named: detectSymbol,
-        as: DetectResetsFn.self
-    )
-
-    private static func loadSymbol<T>(
-        named symbolName: String,
-        as _: T.Type
-    ) -> T {
-        guard
-            let handle = dlopen(nil, RTLD_NOW),
-            let symbol = dlsym(handle, symbolName)
-        else {
-            preconditionFailure("Missing KairosCore symbol: \(symbolName)")
-        }
-
-        return unsafeBitCast(symbol, to: T.self)
-    }
-}
-
 private enum GridDesignTokens {
     static let backgroundSurface = Color(red: 16.0 / 255.0, green: 16.0 / 255.0, blue: 18.0 / 255.0)
     static let stepActive = Color(red: 245.0 / 255.0, green: 247.0 / 255.0, blue: 250.0 / 255.0)
@@ -445,7 +397,7 @@ private struct GridRendererShowcaseSection: Identifiable {
 }
 
 private enum GridRendererShowcaseData {
-    private static let resetDetector = KairosCoreResetDetectorBridge()
+    private static let resetDetector: any ResetDetector = TimeDomainFactory.makeResetDetector()
 
     static let sections: [GridRendererShowcaseSection] = [
         GridRendererShowcaseSection(
