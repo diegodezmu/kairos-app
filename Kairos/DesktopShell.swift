@@ -8,6 +8,7 @@ final class DesktopShellModel {
     let settings: SettingsModel
 
     private let presetStore: PresetStore?
+    private let currentDate: () -> Date
     private let gridPreviewDriver = GridPreviewDriver()
     private let levelPreviewDriver = LevelPreviewDriver()
 
@@ -22,10 +23,12 @@ final class DesktopShellModel {
 
     init(
         settings: SettingsModel = SettingsModel(),
-        presetStore: PresetStore? = try? PresetStore()
+        presetStore: PresetStore? = try? PresetStore(),
+        currentDate: @escaping () -> Date = Date.init
     ) {
         self.settings = settings
         self.presetStore = presetStore
+        self.currentDate = currentDate
         presetLibrary = .factoryDefault
         synchronizeTransportState()
 
@@ -90,7 +93,11 @@ final class DesktopShellModel {
         }
     }
 
-    func selectPreset(
+    func selectPreset(_ slot: PresetSlot) {
+        selectPreset(slot, at: currentDate())
+    }
+
+    private func selectPreset(
         _ slot: PresetSlot,
         at date: Date
     ) {
@@ -110,7 +117,11 @@ final class DesktopShellModel {
         isSidebarVisible.toggle()
     }
 
-    func togglePlay(at date: Date) {
+    func togglePlay() {
+        togglePlay(at: currentDate())
+    }
+
+    private func togglePlay(at date: Date) {
         guard canControlTransport else {
             return
         }
@@ -125,14 +136,22 @@ final class DesktopShellModel {
         }
     }
 
-    func resetPreview(at date: Date) {
+    func resetPreview() {
+        resetPreview(at: currentDate())
+    }
+
+    private func resetPreview(at date: Date) {
         accumulatedElapsed = 0
         playbackStartedAt = isPreviewPlaying ? date : nil
         gridPreviewDriver.reset()
         levelPreviewDriver.reset()
     }
 
-    func setSyncSource(
+    func setSyncSource(_ source: SyncSource) {
+        setSyncSource(source, at: currentDate())
+    }
+
+    private func setSyncSource(
         _ source: SyncSource,
         at date: Date
     ) {
@@ -421,11 +440,10 @@ struct DesktopShellRootView: View {
     @State private var model = DesktopShellModel()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
             DesktopShellView(
                 model: model,
-                snapshot: model.snapshot(at: timeline.date),
-                now: timeline.date
+                snapshot: model.snapshot(at: timeline.date)
             )
         }
         .frame(minWidth: 1_280, minHeight: 820)
@@ -436,14 +454,12 @@ struct DesktopShellRootView: View {
 private struct DesktopShellView: View {
     let model: DesktopShellModel
     let snapshot: DesktopShellSnapshot
-    let now: Date
 
     var body: some View {
         VStack(spacing: 0) {
             DesktopToolbarView(
                 model: model,
-                snapshot: snapshot,
-                now: now
+                snapshot: snapshot
             )
 
             HStack(spacing: 0) {
@@ -451,8 +467,7 @@ private struct DesktopShellView: View {
                     DesktopSidebarWrapper {
                         DesktopSidebarView(
                             model: model,
-                            snapshot: snapshot,
-                            now: now
+                            snapshot: snapshot
                         )
                     }
                     DesktopSidebarHandle()
@@ -473,7 +488,6 @@ private struct DesktopShellView: View {
 private struct DesktopToolbarView: View {
     let model: DesktopShellModel
     let snapshot: DesktopShellSnapshot
-    let now: Date
 
     var body: some View {
         HStack(spacing: DesktopShellTokens.componentGapXL) {
@@ -486,7 +500,7 @@ private struct DesktopToolbarView: View {
                     title: model.activePresetToolbarLabel,
                     activeSlot: model.settings.activePresetSlot,
                     onSelect: { slot in
-                        model.selectPreset(slot, at: now)
+                        model.selectPreset(slot)
                     },
                     onSave: { slot in
                         Task {
@@ -505,16 +519,12 @@ private struct DesktopToolbarView: View {
                     ToolbarIconButton(
                         icon: model.isPreviewPlaying ? .stop : .play,
                         isDisabled: !model.canControlTransport,
-                        action: {
-                            model.togglePlay(at: now)
-                        }
+                        action: model.togglePlay
                     )
 
                     ToolbarIconButton(
                         icon: .reset,
-                        action: {
-                            model.resetPreview(at: now)
-                        }
+                        action: model.resetPreview
                     )
 
                     ToolbarIconButton(
@@ -580,15 +590,13 @@ private struct DesktopSidebarHandle: View {
 private struct DesktopSidebarView: View {
     let model: DesktopShellModel
     let snapshot: DesktopShellSnapshot
-    let now: Date
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: DesktopShellTokens.layoutGapXL) {
                 GlobalSidebarSection(
                     model: model,
-                    snapshot: snapshot,
-                    now: now
+                    snapshot: snapshot
                 )
 
                 GridSidebarSection(model: model)
@@ -614,7 +622,6 @@ private struct DesktopSidebarView: View {
 private struct GlobalSidebarSection: View {
     let model: DesktopShellModel
     let snapshot: DesktopShellSnapshot
-    let now: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesktopShellTokens.layoutGapXL) {
@@ -632,7 +639,7 @@ private struct GlobalSidebarSection: View {
                                     isSelected: model.settings.syncSource == source,
                                     trailingIcon: source == .midiClock ? .chevronDown : nil,
                                     action: {
-                                        model.setSyncSource(source, at: now)
+                                        model.setSyncSource(source)
                                     }
                                 )
                             }

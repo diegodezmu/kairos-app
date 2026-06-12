@@ -292,7 +292,7 @@ private enum GridCanvasRenderer {
     }
 }
 
-private enum GridStepVisualState {
+enum GridStepVisualState: Equatable {
     case active
     case inactive
     case resetCombined
@@ -316,12 +316,15 @@ private enum GridStepVisualState {
             }
         }
 
-        if activeStepIndex == stepIndex {
-            return .active
+        if
+            activeStepIndex == stepIndex,
+            anticipationRange?.contains(stepIndex) == true
+        {
+            return .anticipation
         }
 
-        if anticipationRange?.contains(stepIndex) == true {
-            return .anticipation
+        if activeStepIndex == stepIndex {
+            return .active
         }
 
         return .inactive

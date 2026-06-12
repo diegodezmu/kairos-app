@@ -124,6 +124,102 @@ final class PresetStoreTests: XCTestCase {
         XCTAssertFalse(snapshot.statuses[.one]?.displayLabel.isEmpty ?? true)
     }
 
+    func testStepVisualStateHighlightsOnlyActiveStepWhenInsideAnticipationRange() {
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 13,
+                activeStepIndex: 13,
+                anticipationRange: 12..<16,
+                resetMark: .none
+            ),
+            .anticipation
+        )
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 12,
+                activeStepIndex: 13,
+                anticipationRange: 12..<16,
+                resetMark: .none
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 15,
+                activeStepIndex: 13,
+                anticipationRange: 12..<16,
+                resetMark: .none
+            ),
+            .inactive
+        )
+    }
+
+    func testGridPreviewDriverSixteenStepQuarterPulseTakesFourBeats() {
+        let driver = GridPreviewDriver()
+        let settings = [makeEnabledCycle()]
+        let checkpoints: [(elapsedSeconds: TimeInterval, expectedStep: Int)] = [
+            (0.0, 0),
+            (0.5, 4),
+            (1.0, 8),
+            (1.5, 12),
+            (2.0, 0),
+        ]
+
+        for checkpoint in checkpoints {
+            let frame = driver.makeFrame(
+                settings: settings,
+                bpm: 120,
+                offset: Offset(milliseconds: 0),
+                elapsedSeconds: checkpoint.elapsedSeconds
+            )
+
+            XCTAssertEqual(
+                frame.cycles.first?.activeStepIndex,
+                checkpoint.expectedStep,
+                "elapsed=\(checkpoint.elapsedSeconds)"
+            )
+        }
+    }
+
+    @MainActor
+    func testDesktopShellModelPlayStartsFromCurrentClockTime() {
+        let renderedDate = Date(timeIntervalSinceReferenceDate: 100)
+        let playDate = renderedDate.addingTimeInterval(1.5)
+        let clock = MutableDateClock(now: renderedDate)
+        let model = makeModel(clock: clock)
+
+        _ = model.snapshot(at: renderedDate)
+
+        clock.now = playDate
+        model.togglePlay()
+
+        let snapshot = model.snapshot(at: playDate)
+        XCTAssertEqual(snapshot.gridFrame.cycles.first?.activeStepIndex, 0)
+    }
+
+    @MainActor
+    func testDesktopShellModelResetPreviewReturnsGridToStepZeroWhilePlaying() {
+        let startDate = Date(timeIntervalSinceReferenceDate: 200)
+        let advancedDate = startDate.addingTimeInterval(1.0)
+        let clock = MutableDateClock(now: startDate)
+        let model = makeModel(clock: clock)
+
+        model.togglePlay()
+
+        let advancedSnapshot = model.snapshot(at: advancedDate)
+        XCTAssertEqual(advancedSnapshot.gridFrame.cycles.first?.activeStepIndex, 8)
+
+        clock.now = advancedDate
+        model.resetPreview()
+
+        let resetSnapshot = model.snapshot(at: advancedDate)
+        XCTAssertEqual(resetSnapshot.gridFrame.cycles.first?.activeStepIndex, 0)
+
+        let resumedDate = advancedDate.addingTimeInterval(0.5)
+        let resumedSnapshot = model.snapshot(at: resumedDate)
+        XCTAssertEqual(resumedSnapshot.gridFrame.cycles.first?.activeStepIndex, 4)
+    }
+
     private func makePreset(seed: Int) -> SettingsPreset {
         let syncSources: [SyncSource] = [
             .internalClock,
@@ -213,5 +309,40 @@ final class PresetStoreTests: XCTestCase {
         let library = try dto.domainModel()
 
         XCTAssertTrue(library.presets.allSatisfy { $0.settings.isMetronomeEnabled == false })
+    }
+
+    @MainActor
+    private func makeModel(clock: MutableDateClock) -> DesktopShellModel {
+        let settings = SettingsModel()
+        settings.updateGridCycle(slot: .one) { cycle in
+            cycle.isEnabled = true
+            cycle.stepNumber = .sixteen
+            cycle.pulse = .oneQuarter
+        }
+
+        return DesktopShellModel(
+            settings: settings,
+            presetStore: nil,
+            currentDate: { clock.now }
+        )
+    }
+
+    private func makeEnabledCycle() -> GridCycleSettings {
+        GridCycleSettings(
+            slot: .one,
+            isEnabled: true,
+            name: "Cycle 1",
+            stepNumber: .sixteen,
+            pulse: .oneQuarter,
+            visualMode: .block
+        )
+    }
+}
+
+private final class MutableDateClock {
+    var now: Date
+
+    init(now: Date) {
+        self.now = now
     }
 }
