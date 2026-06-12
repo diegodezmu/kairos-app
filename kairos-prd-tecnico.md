@@ -304,10 +304,17 @@ Se pintan **sobre la propia barra**, nunca como icono o capa externa.
 > calcula **localmente** según los ciclos configurados en ese dispositivo. Como la
 > fase de cada ciclo es función del reloj común, sigue siendo reproducible.
 
-#### 5.5.2 Anticipación (realce rojo del tramo final)
+#### 5.5.2 Anticipación (realce rojo del step activo en el tramo final)
 
-El último tramo de cada ciclo se ilumina en **rojo** para señalar reinicio
-inminente. Solo en ciclos de 8+ steps (en 1/2/4 se evita para no saturar):
+Cada ciclo tiene una **zona de anticipación** (los últimos N steps, tabla abajo) que
+señala reinicio inminente. **Comportamiento de render (aclarado):** el realce rojo NO
+es una cola fija siempre encendida. **Solo el step activo se ilumina en rojo, y solo
+cuando cae dentro de la zona de anticipación** — en ese instante el activo se pinta
+rojo en vez de blanco. Los demás steps de la zona que no son el activo permanecen
+**inactivos** (oscuros); nunca hay varios steps rojos permanentes a la vez. Cuando el
+pulso avanza al siguiente step, el anterior vuelve a inactivo. La `anticipationRange`
+del `CycleState` define la zona; el renderer aplica esta regla (no colorea toda la
+zona). Solo en ciclos de 8+ steps (en 1/2/4 se evita para no saturar):
 
 | Step number | Steps finales en rojo |
 | ----------- | --------------------- |
