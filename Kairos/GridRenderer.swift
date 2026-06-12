@@ -371,9 +371,11 @@ final class GridPreviewDriver {
     private let cycleEngine: any CycleEngine = TimeDomainFactory.makeCycleEngine()
     private let resetDetector: any ResetDetector = TimeDomainFactory.makeResetDetector()
     private var previousStatesBySlot: [CycleSlot: CycleState] = [:]
+    private var latchedResetMarksBySlot: [CycleSlot: GridResetMark] = [:]
 
     func reset() {
         previousStatesBySlot = [:]
+        latchedResetMarksBySlot = [:]
     }
 
     func makeFrame(
@@ -388,6 +390,7 @@ final class GridPreviewDriver {
 
         guard !enabledSettings.isEmpty else {
             previousStatesBySlot = [:]
+            latchedResetMarksBySlot = [:]
             return GridRenderFrame(cycles: [])
         }
 
@@ -405,7 +408,10 @@ final class GridPreviewDriver {
             currentStates: currentStates,
             enabledSettings: enabledSettings
         )
-        let resetMarks = GridResetMarkMapper.map(resetStates)
+        let resetMarks = resolveResetMarks(
+            currentStates: currentStates,
+            detectedResetMarks: GridResetMarkMapper.map(resetStates)
+        )
 
         previousStatesBySlot = Dictionary(
             uniqueKeysWithValues: currentStates.map { ($0.config.slot, $0) }
@@ -431,6 +437,32 @@ final class GridPreviewDriver {
         }
 
         return GridRenderFrame(cycles: cycles)
+    }
+
+    private func resolveResetMarks(
+        currentStates: [CycleState],
+        detectedResetMarks: [CycleSlot: GridResetMark]
+    ) -> [CycleSlot: GridResetMark] {
+        var nextLatchedMarksBySlot: [CycleSlot: GridResetMark] = [:]
+
+        for state in currentStates {
+            guard state.currentStep == 0 else {
+                continue
+            }
+
+            let slot = state.config.slot
+            if let detectedMark = detectedResetMarks[slot], detectedMark != .none {
+                nextLatchedMarksBySlot[slot] = detectedMark
+                continue
+            }
+
+            if let latchedMark = latchedResetMarksBySlot[slot], latchedMark != .none {
+                nextLatchedMarksBySlot[slot] = latchedMark
+            }
+        }
+
+        latchedResetMarksBySlot = nextLatchedMarksBySlot
+        return nextLatchedMarksBySlot
     }
 
     private func resetStates(

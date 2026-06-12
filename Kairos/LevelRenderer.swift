@@ -14,6 +14,8 @@ struct LevelRenderFrame: Sendable, Equatable {
 
     struct Lane: Identifiable, Sendable, Equatable {
         struct Column: Sendable, Equatable {
+            let startHostTime: UInt64
+            let endHostTime: UInt64
             let minimumDB: CGFloat
             let maximumDB: CGFloat
             let meanDB: CGFloat
@@ -154,8 +156,20 @@ private enum LevelCanvasRenderer {
             with: .color(LevelDesignTokens.meterBackground.color)
         )
 
-        drawChannel(lane.left, in: &context, meterRect: meterRect)
-        drawChannel(lane.right, in: &context, meterRect: meterRect)
+        drawChannel(
+            lane.left,
+            latestHostTime: lane.latestHostTime,
+            historyRange: lane.historyRange,
+            in: &context,
+            meterRect: meterRect
+        )
+        drawChannel(
+            lane.right,
+            latestHostTime: lane.latestHostTime,
+            historyRange: lane.historyRange,
+            in: &context,
+            meterRect: meterRect
+        )
         drawResetMarks(
             generalResetMarks,
             latestHostTime: lane.latestHostTime,
@@ -164,45 +178,59 @@ private enum LevelCanvasRenderer {
             meterRect: meterRect
         )
         drawScale(in: &context, meterRect: meterRect)
-        drawBorders(for: lane.left, in: &context, meterRect: meterRect)
-        drawBorders(for: lane.right, in: &context, meterRect: meterRect)
+        drawBorders(
+            for: lane.left,
+            latestHostTime: lane.latestHostTime,
+            historyRange: lane.historyRange,
+            in: &context,
+            meterRect: meterRect
+        )
+        drawBorders(
+            for: lane.right,
+            latestHostTime: lane.latestHostTime,
+            historyRange: lane.historyRange,
+            in: &context,
+            meterRect: meterRect
+        )
         drawLabels(in: &context, meterRect: meterRect)
     }
 
     private static func drawChannel(
         _ channel: LevelRenderFrame.Lane.Channel,
+        latestHostTime: UInt64,
+        historyRange: HistoryRange,
         in context: inout GraphicsContext,
         meterRect: CGRect
     ) {
-        let meanPoints = historyPoints(
+        let meanPoints = LevelMassGeometry.contourPoints(
             for: channel.columns,
             currentDB: channel.currentDB,
+            latestHostTime: latestHostTime,
+            historyRange: historyRange,
             in: meterRect,
             value: \.meanDB
         )
 
-        guard let firstPoint = meanPoints.first else {
-            return
+        for fillRect in LevelMassGeometry.fillRects(
+            contourPoints: meanPoints,
+            meterRect: meterRect
+        ) {
+            context.fill(Path(fillRect), with: .color(channel.fillColor.color))
         }
 
-        var fillPath = Path()
-        fillPath.move(to: CGPoint(x: meterRect.minX, y: meterRect.maxY))
-        fillPath.addLine(to: firstPoint)
-        fillPath.addLines(meanPoints)
-        fillPath.addLine(to: CGPoint(x: meterRect.maxX, y: meterRect.maxY))
-        fillPath.closeSubpath()
-
-        context.fill(fillPath, with: .color(channel.fillColor.color))
-
-        let upperPoints = historyPoints(
+        let upperPoints = LevelMassGeometry.contourPoints(
             for: channel.columns,
             currentDB: channel.currentDB,
+            latestHostTime: latestHostTime,
+            historyRange: historyRange,
             in: meterRect,
             value: \.maximumDB
         )
-        let lowerPoints = historyPoints(
+        let lowerPoints = LevelMassGeometry.contourPoints(
             for: channel.columns,
             currentDB: channel.currentDB,
+            latestHostTime: latestHostTime,
+            historyRange: historyRange,
             in: meterRect,
             value: \.minimumDB
         )
@@ -220,12 +248,16 @@ private enum LevelCanvasRenderer {
 
     private static func drawBorders(
         for channel: LevelRenderFrame.Lane.Channel,
+        latestHostTime: UInt64,
+        historyRange: HistoryRange,
         in context: inout GraphicsContext,
         meterRect: CGRect
     ) {
-        let borderPoints = historyPoints(
+        let borderPoints = LevelMassGeometry.contourPoints(
             for: channel.columns,
             currentDB: channel.currentDB,
+            latestHostTime: latestHostTime,
+            historyRange: historyRange,
             in: meterRect,
             value: \.meanDB
         )
@@ -334,37 +366,6 @@ private enum LevelCanvasRenderer {
         }
     }
 
-    private static func historyPoints(
-        for columns: [LevelRenderFrame.Lane.Column],
-        currentDB: CGFloat,
-        in meterRect: CGRect,
-        value: KeyPath<LevelRenderFrame.Lane.Column, CGFloat>
-    ) -> [CGPoint] {
-        guard !columns.isEmpty else {
-            return [
-                CGPoint(
-                    x: meterRect.maxX,
-                    y: yPosition(for: currentDB, in: meterRect)
-                )
-            ]
-        }
-
-        let step = meterRect.width / CGFloat(max(columns.count, 1))
-        var points = columns.enumerated().map { index, column in
-            CGPoint(
-                x: meterRect.minX + (CGFloat(index) * step),
-                y: yPosition(for: column[keyPath: value], in: meterRect)
-            )
-        }
-        points.append(
-            CGPoint(
-                x: meterRect.maxX,
-                y: yPosition(for: currentDB, in: meterRect)
-            )
-        )
-        return points
-    }
-
     private static func rangeEnvelopePath(
         upperPoints: [CGPoint],
         lowerPoints: [CGPoint]
@@ -391,6 +392,177 @@ private enum LevelCanvasRenderer {
         let clamped = min(max(db, LevelDecibelScale.floorDB), LevelDecibelScale.ceilingDB)
         let progress = (LevelDecibelScale.ceilingDB - clamped) / LevelDecibelScale.visibleRange
         return rect.minY + (progress * rect.height)
+    }
+}
+
+enum LevelMassGeometry {
+    static func contourPoints(
+        for columns: [LevelRenderFrame.Lane.Column],
+        currentDB: CGFloat,
+        latestHostTime: UInt64,
+        historyRange: HistoryRange,
+        in meterRect: CGRect,
+        value: KeyPath<LevelRenderFrame.Lane.Column, CGFloat>
+    ) -> [CGPoint] {
+        let currentPoint = CGPoint(
+            x: meterRect.maxX,
+            y: yPosition(for: currentDB, in: meterRect)
+        )
+
+        guard !columns.isEmpty else {
+            return [
+                CGPoint(x: meterRect.minX, y: currentPoint.y),
+                currentPoint,
+            ]
+        }
+
+        let visibleRangeMilliseconds = UInt64(historyRange.rawValue * 1_000.0)
+        let historyPoints = columns
+            .sorted { $0.endHostTime < $1.endHostTime }
+            .map { column in
+                CGPoint(
+                    x: xPosition(
+                        for: column.endHostTime,
+                        latestHostTime: latestHostTime,
+                        visibleRangeMilliseconds: visibleRangeMilliseconds,
+                        in: meterRect
+                    ),
+                    y: yPosition(for: column[keyPath: value], in: meterRect)
+                )
+            }
+            .reduce(into: [CGPoint]()) { points, point in
+                if let last = points.last, abs(last.x - point.x) < 0.5 {
+                    points[points.count - 1] = point
+                } else {
+                    points.append(point)
+                }
+            }
+
+        guard let firstHistoryPoint = historyPoints.first else {
+            return [
+                CGPoint(x: meterRect.minX, y: currentPoint.y),
+                currentPoint,
+            ]
+        }
+
+        var points = [CGPoint(x: meterRect.minX, y: firstHistoryPoint.y)]
+        if firstHistoryPoint.x > meterRect.minX {
+            points.append(firstHistoryPoint)
+        }
+
+        points.append(contentsOf: historyPoints.dropFirst())
+
+        if let lastHistoryPoint = historyPoints.last, lastHistoryPoint.x < meterRect.maxX {
+            points.append(
+                CGPoint(
+                x: meterRect.maxX,
+                y: lastHistoryPoint.y
+                )
+            )
+        }
+
+        if !isEquivalent(points.last, currentPoint) {
+            points.append(currentPoint)
+        }
+
+        return points
+    }
+
+    static func fillRects(
+        contourPoints: [CGPoint],
+        meterRect: CGRect
+    ) -> [CGRect] {
+        guard contourPoints.count >= 2 else {
+            return []
+        }
+
+        return zip(contourPoints, contourPoints.dropFirst()).flatMap { startPoint, endPoint in
+            guard endPoint.x > startPoint.x else {
+                return [CGRect]()
+            }
+
+            let segmentWidth = endPoint.x - startPoint.x
+            let sliceCount = max(Int(ceil(segmentWidth)), 1)
+            let sliceWidth = segmentWidth / CGFloat(sliceCount)
+
+            return (0..<sliceCount).compactMap { index in
+                let sliceMinX = startPoint.x + (CGFloat(index) * sliceWidth)
+                let sliceMaxX = min(endPoint.x, sliceMinX + sliceWidth)
+                let expandedMinX = max(startPoint.x, sliceMinX - 0.5)
+                let expandedMaxX = min(endPoint.x, sliceMaxX + 0.5)
+                let startProgress = (sliceMinX - startPoint.x) / segmentWidth
+                let endProgress = (sliceMaxX - startPoint.x) / segmentWidth
+                let startY = startPoint.y + ((endPoint.y - startPoint.y) * startProgress)
+                let endY = startPoint.y + ((endPoint.y - startPoint.y) * endProgress)
+                let topY = min(startY, endY)
+                let height = meterRect.maxY - topY
+
+                guard expandedMaxX > expandedMinX, height > 0 else {
+                    return nil
+                }
+
+                return CGRect(
+                    x: expandedMinX,
+                    y: topY,
+                    width: expandedMaxX - expandedMinX,
+                    height: height
+                )
+            }
+        }
+    }
+
+    static func fillSegments(
+        contourPoints: [CGPoint],
+        meterRect: CGRect
+    ) -> [[CGPoint]] {
+        guard contourPoints.count >= 2 else {
+            return []
+        }
+
+        return zip(contourPoints, contourPoints.dropFirst()).map { startPoint, endPoint in
+            [
+                CGPoint(x: startPoint.x, y: meterRect.maxY),
+                startPoint,
+                endPoint,
+                CGPoint(x: endPoint.x, y: meterRect.maxY),
+            ]
+        }
+    }
+
+    private static func yPosition(
+        for db: CGFloat,
+        in rect: CGRect
+    ) -> CGFloat {
+        let clamped = min(max(db, LevelDecibelScale.floorDB), LevelDecibelScale.ceilingDB)
+        let progress = (LevelDecibelScale.ceilingDB - clamped) / LevelDecibelScale.visibleRange
+        return rect.minY + (progress * rect.height)
+    }
+
+    private static func xPosition(
+        for hostTime: UInt64,
+        latestHostTime: UInt64,
+        visibleRangeMilliseconds: UInt64,
+        in rect: CGRect
+    ) -> CGFloat {
+        guard visibleRangeMilliseconds > 0 else {
+            return rect.maxX
+        }
+
+        let clampedHostTime = min(hostTime, latestHostTime)
+        let age = latestHostTime - clampedHostTime
+        let progress = min(1, CGFloat(age) / CGFloat(visibleRangeMilliseconds))
+        return rect.maxX - (progress * rect.width)
+    }
+
+    private static func isEquivalent(
+        _ lhs: CGPoint?,
+        _ rhs: CGPoint
+    ) -> Bool {
+        guard let lhs else {
+            return false
+        }
+
+        return abs(lhs.x - rhs.x) < 0.5 && abs(lhs.y - rhs.y) < 0.5
     }
 }
 
@@ -497,6 +669,8 @@ private final class LevelPresentationPipeline {
             fillColor: fillColor,
             columns: history.buckets.map { bucket in
                 LevelRenderFrame.Lane.Column(
+                    startHostTime: bucket.startHostTime,
+                    endHostTime: bucket.endHostTime,
                     minimumDB: LevelDecibelScale.displayDBFS(
                         for: side == .left ? bucket.minimumRMSLeft : bucket.minimumRMSRight
                     ),
