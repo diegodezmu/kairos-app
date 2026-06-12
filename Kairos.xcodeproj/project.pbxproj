@@ -9,15 +9,39 @@
 /* Begin PBXBuildFile section */
 		F10000000000000000000030 /* KairosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* KairosApp.swift */; };
 		F10000000000000000000031 /* GridRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000014 /* GridRenderer.swift */; };
-		F10000000000000000000033 /* LevelRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000015 /* LevelRenderer.swift */; };
 		F10000000000000000000032 /* KairosCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000091 /* KairosCore */; };
+		F10000000000000000000033 /* LevelRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000015 /* LevelRenderer.swift */; };
+		F10000000000000000000034 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* AppSettings.swift */; };
+		F10000000000000000000035 /* SettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000017 /* SettingsModel.swift */; };
+		F10000000000000000000036 /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000018 /* PresetStore.swift */; };
+		F10000000000000000000037 /* PresetStoreDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000019 /* PresetStoreDTOs.swift */; };
+		F10000000000000000000038 /* PresetStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001A /* PresetStoreTests.swift */; };
+		F10000000000000000000039 /* KairosCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000092 /* KairosCore */; };
+		F1000000000000000000003A /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001C /* XCTest.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		F10000000000000000000062 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F10000000000000000000060;
+			remoteInfo = Kairos;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		F10000000000000000000010 /* Kairos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kairos.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10000000000000000000011 /* KairosTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KairosTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000013 /* KairosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KairosApp.swift; sourceTree = "<group>"; };
 		F10000000000000000000014 /* GridRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridRenderer.swift; sourceTree = "<group>"; };
 		F10000000000000000000015 /* LevelRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LevelRenderer.swift; sourceTree = "<group>"; };
+		F10000000000000000000016 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		F10000000000000000000017 /* SettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsModel.swift; sourceTree = "<group>"; };
+		F10000000000000000000018 /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
+		F10000000000000000000019 /* PresetStoreDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStoreDTOs.swift; sourceTree = "<group>"; };
+		F1000000000000000000001A /* PresetStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStoreTests.swift; sourceTree = "<group>"; };
+		F1000000000000000000001C /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -29,6 +53,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F10000000000000000000057 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10000000000000000000039 /* KairosCore in Frameworks */,
+				F1000000000000000000003A /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -36,6 +69,8 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000005 /* Kairos */,
+				F10000000000000000000006 /* KairosTests */,
+				F10000000000000000000007 /* Frameworks */,
 				F10000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -44,6 +79,7 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000010 /* Kairos.app */,
+				F10000000000000000000011 /* KairosTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -52,10 +88,30 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000013 /* KairosApp.swift */,
+				F10000000000000000000016 /* AppSettings.swift */,
+				F10000000000000000000017 /* SettingsModel.swift */,
+				F10000000000000000000018 /* PresetStore.swift */,
+				F10000000000000000000019 /* PresetStoreDTOs.swift */,
 				F10000000000000000000014 /* GridRenderer.swift */,
 				F10000000000000000000015 /* LevelRenderer.swift */,
 			);
 			path = Kairos;
+			sourceTree = "<group>";
+		};
+		F10000000000000000000006 /* KairosTests */ = {
+			isa = PBXGroup;
+			children = (
+				F1000000000000000000001A /* PresetStoreTests.swift */,
+			);
+			path = KairosTests;
+			sourceTree = "<group>";
+		};
+		F10000000000000000000007 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				F1000000000000000000001C /* XCTest.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -81,6 +137,27 @@
 			productReference = F10000000000000000000010 /* Kairos.app */;
 			productType = "com.apple.product-type.application";
 		};
+		F10000000000000000000061 /* KairosTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10000000000000000000072 /* Build configuration list for PBXNativeTarget "KairosTests" */;
+			buildPhases = (
+				F10000000000000000000056 /* Sources */,
+				F10000000000000000000057 /* Frameworks */,
+				F10000000000000000000058 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F10000000000000000000063 /* PBXTargetDependency */,
+			);
+			name = KairosTests;
+			packageProductDependencies = (
+				F10000000000000000000092 /* KairosCore */,
+			);
+			productName = KairosTests;
+			productReference = F10000000000000000000011 /* KairosTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -92,6 +169,9 @@
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					F10000000000000000000060 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					F10000000000000000000061 = {
 						CreatedOnToolsVersion = 16.4;
 					};
 				};
@@ -113,12 +193,20 @@
 			projectRoot = "";
 			targets = (
 				F10000000000000000000060 /* Kairos */,
+				F10000000000000000000061 /* KairosTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		F10000000000000000000052 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000058 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -133,12 +221,32 @@
 			buildActionMask = 2147483647;
 			files = (
 				F10000000000000000000030 /* KairosApp.swift in Sources */,
+				F10000000000000000000034 /* AppSettings.swift in Sources */,
+				F10000000000000000000035 /* SettingsModel.swift in Sources */,
+				F10000000000000000000036 /* PresetStore.swift in Sources */,
+				F10000000000000000000037 /* PresetStoreDTOs.swift in Sources */,
 				F10000000000000000000031 /* GridRenderer.swift in Sources */,
 				F10000000000000000000033 /* LevelRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F10000000000000000000056 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10000000000000000000038 /* PresetStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F10000000000000000000063 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F10000000000000000000060 /* Kairos */;
+			targetProxy = F10000000000000000000062 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCLocalSwiftPackageReference section */
 		F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */ = {
@@ -209,6 +317,47 @@
 			};
 			name = Release;
 		};
+		F10000000000000000000084 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.diegofernandezmunoz.KairosTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kairos.app/Contents/MacOS/Kairos";
+				TEST_TARGET_NAME = Kairos;
+			};
+			name = Debug;
+		};
+		F10000000000000000000085 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.diegofernandezmunoz.KairosTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kairos.app/Contents/MacOS/Kairos";
+				TEST_TARGET_NAME = Kairos;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -230,10 +379,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		F10000000000000000000072 /* Build configuration list for PBXNativeTarget "KairosTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000084 /* Debug */,
+				F10000000000000000000085 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		F10000000000000000000091 /* KairosCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */;
+			productName = KairosCore;
+		};
+		F10000000000000000000092 /* KairosCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */;
 			productName = KairosCore;
