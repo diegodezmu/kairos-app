@@ -18,6 +18,20 @@
 - El reloj, el audio real y el networking real quedan fuera de `F1-SPEC`.
 - Las tablas de test son el criterio de aceptación de `F1-TD` y `F1-DC`.
 
+## API pública de construcción
+
+Este contrato añade, de forma aditiva, dos namespaces de factorías públicas:
+
+- `TimeDomainFactory` construye `CycleEngine`, `ResetDetector`, `Offset`, `OriginLatch`, `InternalClock`, `MIDIClock` y `AbletonLinkClock`.
+- `DynamicsCoreFactory` construye `HistoryBuffer`, `LaneInputStatusMachine`, `DynamicsPublisher`, `ClipDetector`, `RMSPeakMeasuring` y `DynamicsMeter`.
+
+Reglas del contrato:
+
+- Las factorías devuelven el protocolo o tipo público correspondiente.
+- Las implementaciones `Default*` siguen siendo internas y no forman parte del contrato.
+- `OriginLatch`, `LaneInputStatusMachine` y `DynamicsMeter` quedan expuestos como componentes públicos porque un consumidor externo necesita instanciarlos y operarlos directamente.
+- El cambio es solo aditivo: no altera comportamiento, tablas ni firmas públicas previas.
+
 ## DECISION-NEEDED (resueltos en el freeze)
 
 - **Bootstrap de `LaneSignalState` — RESUELTO.** Al activar una lane

@@ -158,3 +158,40 @@ final class DefaultDynamicsMeter: @unchecked Sendable {
         }
     }
 }
+
+/// Public measurement component that produces `DynamicsSample` payloads.
+public final class DynamicsMeter: @unchecked Sendable {
+    private let storage: DefaultDynamicsMeter
+
+    init(rmsPeakMeter: any RMSPeakMeasuring = DefaultRMSPeakMeter()) {
+        self.storage = DefaultDynamicsMeter(rmsPeakMeter: rmsPeakMeter)
+    }
+
+    public func measure(
+        channels: [[Float]],
+        sampleRate: Double,
+        hostTime: UInt64 = 0,
+        sampleTime: Int64 = 0
+    ) throws -> DynamicsSample {
+        try storage.measure(
+            channels: channels,
+            sampleRate: sampleRate,
+            hostTime: hostTime,
+            sampleTime: sampleTime
+        )
+    }
+
+    public func measure(
+        channels: [UnsafeBufferPointer<Float>],
+        sampleRate: Double,
+        hostTime: UInt64 = 0,
+        sampleTime: Int64 = 0
+    ) -> DynamicsSample {
+        storage.measure(
+            channels: channels,
+            sampleRate: sampleRate,
+            hostTime: hostTime,
+            sampleTime: sampleTime
+        )
+    }
+}

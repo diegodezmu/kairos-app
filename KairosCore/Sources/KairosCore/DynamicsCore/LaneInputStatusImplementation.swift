@@ -77,15 +77,16 @@ enum LaneSignalStateEvaluator {
     }
 }
 
-struct LaneInputStatusMachine: Sendable {
+/// Stateful evaluator that applies the LaneInputStatus contract across samples.
+public struct LaneInputStatusMachine: Sendable {
     private let lane: LaneID
     private let channelLabel: String
-    private(set) var laneEnabled: Bool
-    private(set) var currentStatus: LaneInputStatus
+    public private(set) var laneEnabled: Bool
+    public private(set) var currentStatus: LaneInputStatus
     private var lastAboveFloorMilliseconds: UInt64?
     private var lastClipMilliseconds: UInt64?
 
-    init(
+    public init(
         lane: LaneID,
         channelLabel: String,
         laneEnabled: Bool = false
@@ -102,7 +103,7 @@ struct LaneInputStatusMachine: Sendable {
         )
     }
 
-    mutating func setEnabled(_ enabled: Bool) {
+    public mutating func setEnabled(_ enabled: Bool) {
         guard enabled != laneEnabled else {
             return
         }
@@ -124,7 +125,7 @@ struct LaneInputStatusMachine: Sendable {
     }
 
     @discardableResult
-    mutating func consume(
+    public mutating func consume(
         _ laneSample: LaneDynamicsSample,
         atMilliseconds currentMilliseconds: UInt64
     ) -> LaneInputStatus {
@@ -159,7 +160,7 @@ struct LaneInputStatusMachine: Sendable {
     }
 
     @discardableResult
-    mutating func consume(_ sample: DynamicsSample) -> LaneInputStatus {
+    public mutating func consume(_ sample: DynamicsSample) -> LaneInputStatus {
         consume(
             sample.lane(lane),
             atMilliseconds: dynamicsTimelineMilliseconds(
