@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 import KairosCore
 
@@ -40,14 +41,11 @@ struct GridRenderFrame: Sendable, Equatable {
     init(
         mode: Mode,
         currentStates: [CycleState],
-        previousStates: [CycleState]? = nil
+        resetStates: [CycleResetState] = []
     ) {
         self.mode = mode
 
-        let resetMarks = GridResetOverlayResolver.resolve(
-            previous: previousStates ?? [],
-            current: currentStates
-        )
+        let resetMarks = GridResetMarkMapper.map(resetStates)
 
         cycles = currentStates
             .sorted { $0.config.slot.rawValue < $1.config.slot.rawValue }
@@ -60,6 +58,27 @@ struct GridRenderFrame: Sendable, Equatable {
                     resetMark: resetMarks[state.config.slot] ?? .none
                 )
             }
+    }
+}
+
+private enum GridResetMarkMapper {
+    static func map(_ resetStates: [CycleResetState]) -> [CycleSlot: GridResetMark] {
+        Dictionary(
+            uniqueKeysWithValues: resetStates.map { state in
+                (state.slot, presentationMark(for: state.mark))
+            }
+        )
+    }
+
+    private static func presentationMark(for mark: KairosCore.GridResetMark) -> GridResetMark {
+        switch mark {
+        case .none:
+            return .none
+        case .combined:
+            return .combined
+        case .general:
+            return .general
+        }
     }
 }
 
@@ -315,48 +334,50 @@ private enum GridStepVisualState {
     }
 }
 
-private enum GridResetOverlayResolver {
-    static func resolve(
+/// Bridges to KairosCore's ResetDetector implementation without duplicating
+/// reset-detection rules in the app target.
+private struct KairosCoreResetDetectorBridge: ResetDetector {
+    func detectResets(
         previous: [CycleState],
         current: [CycleState]
-    ) -> [CycleSlot: GridResetMark] {
-        let previousBySlot = Dictionary(
-            uniqueKeysWithValues: previous.map { ($0.config.slot, $0) }
-        )
+    ) -> [CycleResetState] {
+        Self.detectResets(previous, current, Self.makeDetector())
+    }
 
-        let wrappedSlots = Set(
-            current.compactMap { currentState -> CycleSlot? in
-                guard
-                    let previousState = previousBySlot[currentState.config.slot],
-                    let previousIteration = previousState.cycleIteration,
-                    let currentIteration = currentState.cycleIteration,
-                    let currentStep = currentState.currentStep,
-                    currentStep == 0,
-                    currentIteration > previousIteration
-                else {
-                    return nil
-                }
+    private struct DetectorShim {}
 
-                return currentState.config.slot
-            }
-        )
+    private typealias MakeDetectorFn = @convention(thin) () -> DetectorShim
+    private typealias DetectResetsFn = @convention(thin) (
+        [CycleState],
+        [CycleState],
+        DetectorShim
+    ) -> [CycleResetState]
 
-        let sharedMark: GridResetMark
-        switch wrappedSlots.count {
-        case let count where current.count >= 2 && count == current.count:
-            sharedMark = .general
-        case let count where count >= 2:
-            sharedMark = .combined
-        default:
-            sharedMark = .none
+    private static let constructorSymbol = "$s10KairosCore20DefaultResetDetectorVACycfC"
+    private static let detectSymbol = "$s10KairosCore20DefaultResetDetectorV12detectResets8previous7currentSayAA05CycleD5StateVGSayAA0jK0VG_ALtF"
+
+    private static let makeDetector: MakeDetectorFn = loadSymbol(
+        named: constructorSymbol,
+        as: MakeDetectorFn.self
+    )
+
+    private static let detectResets: DetectResetsFn = loadSymbol(
+        named: detectSymbol,
+        as: DetectResetsFn.self
+    )
+
+    private static func loadSymbol<T>(
+        named symbolName: String,
+        as _: T.Type
+    ) -> T {
+        guard
+            let handle = dlopen(nil, RTLD_NOW),
+            let symbol = dlsym(handle, symbolName)
+        else {
+            preconditionFailure("Missing KairosCore symbol: \(symbolName)")
         }
 
-        return Dictionary(
-            uniqueKeysWithValues: current.map { currentState in
-                let mark = wrappedSlots.contains(currentState.config.slot) ? sharedMark : .none
-                return (currentState.config.slot, mark)
-            }
-        )
+        return unsafeBitCast(symbol, to: T.self)
     }
 }
 
@@ -424,6 +445,8 @@ private struct GridRendererShowcaseSection: Identifiable {
 }
 
 private enum GridRendererShowcaseData {
+    private static let resetDetector = KairosCoreResetDetectorBridge()
+
     static let sections: [GridRendererShowcaseSection] = [
         GridRendererShowcaseSection(
             frame: blockFrame,
@@ -485,29 +508,54 @@ private enum GridRendererShowcaseData {
                 anticipationRange: 28..<32
             ),
         ],
-        previousStates: [
-            makeState(
-                slot: .one,
-                stepNumber: .eight,
-                currentStep: 7,
-                cycleIteration: 3,
-                anticipationRange: 7..<8
-            ),
-            makeState(
-                slot: .two,
-                stepNumber: .sixteen,
-                currentStep: 15,
-                cycleIteration: 1,
-                anticipationRange: 12..<16
-            ),
-            makeState(
-                slot: .three,
-                stepNumber: .thirtyTwo,
-                currentStep: 8,
-                cycleIteration: 1,
-                anticipationRange: 28..<32
-            ),
-        ]
+        resetStates: resetDetector.detectResets(
+            previous: [
+                makeState(
+                    slot: .one,
+                    stepNumber: .eight,
+                    currentStep: 7,
+                    cycleIteration: 3,
+                    anticipationRange: 7..<8
+                ),
+                makeState(
+                    slot: .two,
+                    stepNumber: .sixteen,
+                    currentStep: 15,
+                    cycleIteration: 1,
+                    anticipationRange: 12..<16
+                ),
+                makeState(
+                    slot: .three,
+                    stepNumber: .thirtyTwo,
+                    currentStep: 8,
+                    cycleIteration: 1,
+                    anticipationRange: 28..<32
+                ),
+            ],
+            current: [
+                makeState(
+                    slot: .one,
+                    stepNumber: .eight,
+                    currentStep: 0,
+                    cycleIteration: 4,
+                    anticipationRange: 7..<8
+                ),
+                makeState(
+                    slot: .two,
+                    stepNumber: .sixteen,
+                    currentStep: 0,
+                    cycleIteration: 2,
+                    anticipationRange: 12..<16
+                ),
+                makeState(
+                    slot: .three,
+                    stepNumber: .thirtyTwo,
+                    currentStep: 9,
+                    cycleIteration: 1,
+                    anticipationRange: 28..<32
+                ),
+            ]
+        )
     )
 
     private static let lineMDFrame = GridRenderFrame(
@@ -542,36 +590,68 @@ private enum GridRendererShowcaseData {
                 anticipationRange: 120..<128
             ),
         ],
-        previousStates: [
-            makeState(
-                slot: .one,
-                stepNumber: .four,
-                currentStep: 3,
-                cycleIteration: 7,
-                anticipationRange: nil
-            ),
-            makeState(
-                slot: .two,
-                stepNumber: .sixteen,
-                currentStep: 15,
-                cycleIteration: 2,
-                anticipationRange: 12..<16
-            ),
-            makeState(
-                slot: .three,
-                stepNumber: .thirtyTwo,
-                currentStep: 31,
-                cycleIteration: 1,
-                anticipationRange: 28..<32
-            ),
-            makeState(
-                slot: .four,
-                stepNumber: .oneHundredTwentyEight,
-                currentStep: 127,
-                cycleIteration: 0,
-                anticipationRange: 120..<128
-            ),
-        ]
+        resetStates: resetDetector.detectResets(
+            previous: [
+                makeState(
+                    slot: .one,
+                    stepNumber: .four,
+                    currentStep: 3,
+                    cycleIteration: 7,
+                    anticipationRange: nil
+                ),
+                makeState(
+                    slot: .two,
+                    stepNumber: .sixteen,
+                    currentStep: 15,
+                    cycleIteration: 2,
+                    anticipationRange: 12..<16
+                ),
+                makeState(
+                    slot: .three,
+                    stepNumber: .thirtyTwo,
+                    currentStep: 31,
+                    cycleIteration: 1,
+                    anticipationRange: 28..<32
+                ),
+                makeState(
+                    slot: .four,
+                    stepNumber: .oneHundredTwentyEight,
+                    currentStep: 127,
+                    cycleIteration: 0,
+                    anticipationRange: 120..<128
+                ),
+            ],
+            current: [
+                makeState(
+                    slot: .one,
+                    stepNumber: .four,
+                    currentStep: 0,
+                    cycleIteration: 8,
+                    anticipationRange: nil
+                ),
+                makeState(
+                    slot: .two,
+                    stepNumber: .sixteen,
+                    currentStep: 0,
+                    cycleIteration: 3,
+                    anticipationRange: 12..<16
+                ),
+                makeState(
+                    slot: .three,
+                    stepNumber: .thirtyTwo,
+                    currentStep: 0,
+                    cycleIteration: 2,
+                    anticipationRange: 28..<32
+                ),
+                makeState(
+                    slot: .four,
+                    stepNumber: .oneHundredTwentyEight,
+                    currentStep: 0,
+                    cycleIteration: 1,
+                    anticipationRange: 120..<128
+                ),
+            ]
+        )
     )
 
     private static let lineSMFrame = GridRenderFrame(
