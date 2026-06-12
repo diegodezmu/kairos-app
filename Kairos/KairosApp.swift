@@ -11,6 +11,6 @@ struct KairosApp: App {
 
 private struct ContentView: View {
     var body: some View {
-        GridRendererShowcase()
+        LevelRendererShowcase()
     }
 }
