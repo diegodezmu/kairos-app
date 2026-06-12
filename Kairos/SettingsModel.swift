@@ -19,6 +19,7 @@ final class SettingsModel {
             }
         }
     }
+    var isMetronomeEnabled: Bool
     var metronomePulse: Pulse
     var offset: Offset {
         didSet {
@@ -62,6 +63,7 @@ final class SettingsModel {
         self.midiClockStatus = midiClockStatus
         self.linkStatus = linkStatus
         self.bpm = preset.bpm
+        self.isMetronomeEnabled = preset.isMetronomeEnabled
         self.metronomePulse = preset.metronomePulse
         self.offset = preset.offset
         self.isGridVisible = preset.isGridVisible
@@ -74,6 +76,7 @@ final class SettingsModel {
         SettingsPreset(
             syncSource: syncSource,
             bpm: bpm,
+            isMetronomeEnabled: isMetronomeEnabled,
             metronomePulse: metronomePulse,
             offset: offset,
             isGridVisible: isGridVisible,
@@ -93,6 +96,7 @@ final class SettingsModel {
 
         syncSource = preset.syncSource
         bpm = preset.bpm
+        isMetronomeEnabled = preset.isMetronomeEnabled
         metronomePulse = preset.metronomePulse
         offset = preset.offset
         isGridVisible = preset.isGridVisible

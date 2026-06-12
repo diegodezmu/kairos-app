@@ -147,6 +147,7 @@ final class PresetStoreTests: XCTestCase {
         return SettingsPreset(
             syncSource: syncSources[seed],
             bpm: 92 + (seed * 47),
+            isMetronomeEnabled: seed.isMultiple(of: 2),
             metronomePulse: metronomePulses[seed],
             offset: Offset(milliseconds: Double(-160 + (seed * 80))),
             isGridVisible: seed.isMultiple(of: 2),
@@ -171,5 +172,46 @@ final class PresetStoreTests: XCTestCase {
                 )
             }
         )
+    }
+
+    func testLegacyPresetPayloadDefaultsMetronomeToggleToOff() throws {
+        let seededLibrary = PresetLibrary(
+            presets: PresetSlot.allCases.map { slot in
+                StoredPreset(
+                    slot: slot,
+                    settings: SettingsPreset(
+                        syncSource: .internalClock,
+                        bpm: 120,
+                        isMetronomeEnabled: true,
+                        metronomePulse: .oneQuarter,
+                        offset: Offset(milliseconds: 0),
+                        isGridVisible: true,
+                        isLevelVisible: true,
+                        gridCycles: CycleSlot.allCases.map { SettingsDefaults.defaultGridCycle(for: $0) },
+                        levelLanes: LaneID.allCases.map { SettingsDefaults.defaultLevelLane(for: $0) }
+                    )
+                )
+            }
+        )
+        let data = try JSONEncoder().encode(PresetLibraryDTO(library: seededLibrary))
+        var jsonObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var presets = try XCTUnwrap(jsonObject["presets"] as? [[String: Any]])
+
+        for index in presets.indices {
+            var preset = presets[index]
+            var settings = try XCTUnwrap(preset["settings"] as? [String: Any])
+            settings.removeValue(forKey: "isMetronomeEnabled")
+            preset["settings"] = settings
+            presets[index] = preset
+        }
+
+        jsonObject["presets"] = presets
+        let legacyData = try JSONSerialization.data(withJSONObject: jsonObject)
+        let dto = try JSONDecoder().decode(PresetLibraryDTO.self, from: legacyData)
+        let library = try dto.domainModel()
+
+        XCTAssertTrue(library.presets.allSatisfy { $0.settings.isMetronomeEnabled == false })
     }
 }

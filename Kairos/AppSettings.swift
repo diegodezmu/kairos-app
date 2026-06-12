@@ -102,6 +102,7 @@ enum PresetSlot: Int, CaseIterable, Hashable, Sendable {
 struct SettingsPreset: Equatable, Sendable {
     var syncSource: SyncSource
     var bpm: Int
+    var isMetronomeEnabled: Bool
     var metronomePulse: Pulse
     var offset: Offset
     var isGridVisible: Bool
@@ -112,6 +113,7 @@ struct SettingsPreset: Equatable, Sendable {
     init(
         syncSource: SyncSource,
         bpm: Int,
+        isMetronomeEnabled: Bool,
         metronomePulse: Pulse,
         offset: Offset,
         isGridVisible: Bool,
@@ -121,6 +123,7 @@ struct SettingsPreset: Equatable, Sendable {
     ) {
         self.syncSource = syncSource
         self.bpm = SettingsDefaults.clampedBPM(bpm)
+        self.isMetronomeEnabled = isMetronomeEnabled
         self.metronomePulse = metronomePulse
         self.offset = SettingsDefaults.clampedOffset(offset)
         self.isGridVisible = isGridVisible
@@ -132,6 +135,7 @@ struct SettingsPreset: Equatable, Sendable {
     static let factoryDefault = SettingsPreset(
         syncSource: .internalClock,
         bpm: SettingsDefaults.defaultBPM,
+        isMetronomeEnabled: false,
         metronomePulse: SettingsDefaults.defaultMetronomePulse,
         offset: SettingsDefaults.defaultOffset,
         isGridVisible: true,

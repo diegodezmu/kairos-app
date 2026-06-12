@@ -16,7 +16,6 @@ final class DesktopShellModel {
 
     var isSidebarVisible = true
     var isPreviewPlaying = false
-    var isMetronomeEnabled = false
 
     private var accumulatedElapsed: TimeInterval = 0
     private var playbackStartedAt: Date?
@@ -520,9 +519,9 @@ private struct DesktopToolbarView: View {
 
                     ToolbarIconButton(
                         icon: .metronome,
-                        isActive: model.isMetronomeEnabled,
+                        isActive: model.settings.isMetronomeEnabled,
                         action: {
-                            model.isMetronomeEnabled.toggle()
+                            model.settings.isMetronomeEnabled.toggle()
                         }
                     )
                 }

@@ -52,6 +52,7 @@ struct StoredPresetDTO: Codable, Equatable {
 struct SettingsPresetDTO: Codable, Equatable {
     var syncSource: SyncSourceDTO
     var bpm: Int
+    var isMetronomeEnabled: Bool
     var metronomePulse: PulseDTO
     var offsetMilliseconds: Double
     var isGridVisible: Bool
@@ -62,6 +63,7 @@ struct SettingsPresetDTO: Codable, Equatable {
     init(_ preset: SettingsPreset) {
         syncSource = SyncSourceDTO(preset.syncSource)
         bpm = preset.bpm
+        isMetronomeEnabled = preset.isMetronomeEnabled
         metronomePulse = PulseDTO(preset.metronomePulse)
         offsetMilliseconds = preset.offset.milliseconds
         isGridVisible = preset.isGridVisible
@@ -70,10 +72,36 @@ struct SettingsPresetDTO: Codable, Equatable {
         levelLanes = preset.levelLanes.map(LevelLaneConfigurationDTO.init)
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case syncSource
+        case bpm
+        case isMetronomeEnabled
+        case metronomePulse
+        case offsetMilliseconds
+        case isGridVisible
+        case isLevelVisible
+        case gridCycles
+        case levelLanes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        syncSource = try container.decode(SyncSourceDTO.self, forKey: .syncSource)
+        bpm = try container.decode(Int.self, forKey: .bpm)
+        isMetronomeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isMetronomeEnabled) ?? false
+        metronomePulse = try container.decode(PulseDTO.self, forKey: .metronomePulse)
+        offsetMilliseconds = try container.decode(Double.self, forKey: .offsetMilliseconds)
+        isGridVisible = try container.decode(Bool.self, forKey: .isGridVisible)
+        isLevelVisible = try container.decode(Bool.self, forKey: .isLevelVisible)
+        gridCycles = try container.decode([GridCycleSettingsDTO].self, forKey: .gridCycles)
+        levelLanes = try container.decode([LevelLaneConfigurationDTO].self, forKey: .levelLanes)
+    }
+
     var domainModel: SettingsPreset {
         SettingsPreset(
             syncSource: syncSource.domainModel,
             bpm: bpm,
+            isMetronomeEnabled: isMetronomeEnabled,
             metronomePulse: metronomePulse.domainModel,
             offset: Offset(milliseconds: offsetMilliseconds),
             isGridVisible: isGridVisible,
