@@ -8,13 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		F10000000000000000000030 /* KairosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* KairosApp.swift */; };
-		F10000000000000000000031 /* RenderPerfSpike.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000014 /* RenderPerfSpike.swift */; };
+		F10000000000000000000031 /* GridRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000014 /* GridRenderer.swift */; };
+		F10000000000000000000032 /* KairosCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000091 /* KairosCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		F10000000000000000000010 /* Kairos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kairos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000013 /* KairosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KairosApp.swift; sourceTree = "<group>"; };
-		F10000000000000000000014 /* RenderPerfSpike.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderPerfSpike.swift; sourceTree = "<group>"; };
+		F10000000000000000000014 /* GridRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridRenderer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -22,6 +23,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F10000000000000000000032 /* KairosCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -48,7 +50,7 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000013 /* KairosApp.swift */,
-				F10000000000000000000014 /* RenderPerfSpike.swift */,
+				F10000000000000000000014 /* GridRenderer.swift */,
 			);
 			path = Kairos;
 			sourceTree = "<group>";
@@ -70,6 +72,7 @@
 			);
 			name = Kairos;
 			packageProductDependencies = (
+				F10000000000000000000091 /* KairosCore */,
 			);
 			productName = Kairos;
 			productReference = F10000000000000000000010 /* Kairos.app */;
@@ -99,6 +102,9 @@
 				Base,
 			);
 			mainGroup = F10000000000000000000002;
+			packageReferences = (
+				F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */,
+			);
 			productRefGroup = F10000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -124,11 +130,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				F10000000000000000000030 /* KairosApp.swift in Sources */,
-				F10000000000000000000031 /* RenderPerfSpike.swift in Sources */,
+				F10000000000000000000031 /* GridRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = KairosCore;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
 		F10000000000000000000080 /* Debug */ = {
@@ -214,6 +227,14 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F10000000000000000000091 /* KairosCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */;
+			productName = KairosCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F10000000000000000000001 /* Project object */;
 }
