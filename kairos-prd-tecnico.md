@@ -255,10 +255,16 @@ Conceptos: **reloj común**, **ciclo (cycle)**, **step**, **reset**.
 
 - **Ciclos:** mínimo 1, **máximo 4**. En UI se llaman **Cycles**.
 - **Step number:** valores discretos **1, 2, 4, 8, 16, 32, 64, 128**. (Máximo 128)
-- **Pulse:** duración de cada step **en beats**. Valores: **1/16, 1/8, 1/4, 1/2,
-  1, 2, 4, 8, 16, 32, 64**. Ejemplo: 16 steps × pulse 1/4 = 4 beats = 1 compás en
-  4/4. Es decir, `stepDurationBeats = pulse`.
-- **Longitud del ciclo en beats:** `cycleLengthBeats = stepNumber × pulse`.
+- **Pulse:** **valor de nota** (duración musical de cada step). Valores: **1/16, 1/8,
+  1/4, 1/2, 1, 2, 4, 8, 16, 32, 64**. **CORRECCIÓN (musical):** el beat base es la
+  **negra (1/4)**, así que `1/4 = 1 beat`. La conversión es
+  **`stepDurationBeats = pulseFraction × 4`** (la redonda `1` = 4 beats):
+  1/16→0.25 · 1/8→0.5 · **1/4→1** · 1/2→2 · 1→4 · 2→8 · 4→16 · 8→32 · 16→64 · 32→128 ·
+  64→256 beats. Ejemplo correcto: a 120 BPM, un ciclo con pulse **1/4** avanza un step
+  por beat, **acompasado con el metrónomo** (negras); 1/8 = corcheas, 1/16 =
+  semicorcheas. *(La definición anterior `stepDurationBeats = pulse` era incorrecta: 4×
+  rápida.)*
+- **Longitud del ciclo en beats:** `cycleLengthBeats = stepNumber × stepDurationBeats`.
 - **Visual mode:** `block` (masa sólida, ciclos cortos/medios), `border` (stroke
   interior, visibilidad media), `line` (ligero, alta densidad; la línea coincide
   con el borde inicial del step).
@@ -268,10 +274,11 @@ Conceptos: **reloj común**, **ciclo (cycle)**, **step**, **reset**.
 Para un `beat` dado (ya con offset visual aplicado, ver §5.6):
 
 ```
-elapsedBeats   = beat - originBeat        // origin según D6/§5.2
-stepFloat      = elapsedBeats / pulse
-currentStep    = floor(stepFloat) mod stepNumber     // 0-based
-cycleIteration = floor(stepFloat / stepNumber)
+stepDurationBeats = pulseFraction × 4     // 1/4 = 1 beat (negra). Ver §5.3
+elapsedBeats      = beat - originBeat      // origin según D6/§5.2
+stepFloat         = elapsedBeats / stepDurationBeats
+currentStep       = floor(stepFloat) mod stepNumber     // 0-based
+cycleIteration    = floor(stepFloat / stepNumber)
 ```
 
 El avance es **cuantizado**: el step activo salta de uno a otro, no interpola. Se
@@ -717,7 +724,7 @@ público ni va a App Store. Esto relaja casi todos los *gates* administrativos:
 | ------------------- | ------------------------------------------------------------------------- |
 | **Cycle**           | Canal temporal del Grid. 1–4.                                             |
 | **Steps**           | Unidad discreta de un ciclo. 1–128 por ciclo.                             |
-| **Pulse**           | Duración de un step en beats (1/16…64).                                   |
+| **Pulse**           | Valor de nota de un step. `stepDurationBeats = pulse × 4` → 1/4 = negra = 1 beat (§5.3). |
 | **Mode**            | block / border / line.                                                    |
 | **Source (lane)**   | Medidor de Level asociado a un bus estéreo. 1–4. (Antes "window".)        |
 | **History range**   | Ventana temporal del histórico de una Source (10 s…2 min).                |
