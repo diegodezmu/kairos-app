@@ -555,6 +555,16 @@ private enum LevelChannelSide {
     case right
 }
 
+private struct LevelLaneProfile {
+    let lane: LaneID
+    let baseDB: Double
+    let slowSwingDB: Double
+    let fastSwingDB: Double
+    let stereoSpreadDB: Double
+    let clipPeriodMilliseconds: UInt64?
+    let clipChannel: LevelChannelSide?
+}
+
 private struct LevelLaneSettings {
     let lane: LaneID
     let targetDB: CGFloat
@@ -567,73 +577,60 @@ private struct LevelLaneSettings {
     let clipChannel: LevelChannelSide?
 }
 
-private final class LevelShowcaseDriver: ObservableObject {
-    private let historyBuffer: any HistoryBuffer = DynamicsCoreFactory.makeHistoryBuffer()
-    private let resetDetector: any ResetDetector = TimeDomainFactory.makeResetDetector()
-    private let clipDetectors: [any ClipDetector] = LaneID.allCases.map { _ in
+struct LevelPreviewSnapshot {
+    let expandedFrame: LevelRenderFrame
+    let splitFrame: LevelRenderFrame
+    let statuses: [LaneID: LaneInputStatus]
+}
+
+final class LevelPreviewDriver {
+    private var historyBuffer: any HistoryBuffer = DynamicsCoreFactory.makeHistoryBuffer()
+    private var resetDetector: any ResetDetector = TimeDomainFactory.makeResetDetector()
+    private var clipDetectors: [any ClipDetector] = LaneID.allCases.map { _ in
         DynamicsCoreFactory.makeClipDetector()
     }
+    private var statusMachines = LevelPreviewDriver.makeStatusMachines()
     private let presentationPipeline = LevelPresentationPipeline()
     private let historyStepMilliseconds: UInt64 = 100
     private let resetStepMilliseconds: UInt64 = 500
     private let seedDurationMilliseconds: UInt64 = UInt64(HistoryRange.twoMinutes.rawValue * 1_000.0)
-    private let startDate = Date()
-    private let fourWindowSettings: [LevelLaneSettings] = [
-        LevelLaneSettings(
+    private let showcaseStartDate = Date()
+    private let showcaseSplitConfigurations: [LevelLaneConfiguration] = [
+        LevelLaneConfiguration(
             lane: .one,
-            targetDB: -12,
-            historyRange: .tenSeconds,
-            baseDB: -11.5,
-            slowSwingDB: 3.5,
-            fastSwingDB: 1.5,
-            stereoSpreadDB: 1.2,
-            clipPeriodMilliseconds: 19_000,
-            clipChannel: .left
+            isEnabled: true,
+            name: "Drums",
+            targetLevelDB: -12,
+            historyRange: .tenSeconds
         ),
-        LevelLaneSettings(
+        LevelLaneConfiguration(
             lane: .two,
-            targetDB: -18,
-            historyRange: .thirtySeconds,
-            baseDB: -17.0,
-            slowSwingDB: 5.0,
-            fastSwingDB: 1.8,
-            stereoSpreadDB: 1.6,
-            clipPeriodMilliseconds: nil,
-            clipChannel: nil
+            isEnabled: true,
+            name: "FX",
+            targetLevelDB: -18,
+            historyRange: .thirtySeconds
         ),
-        LevelLaneSettings(
+        LevelLaneConfiguration(
             lane: .three,
-            targetDB: -9,
-            historyRange: .oneMinute,
-            baseDB: -13.0,
-            slowSwingDB: 6.5,
-            fastSwingDB: 2.4,
-            stereoSpreadDB: 2.0,
-            clipPeriodMilliseconds: 23_000,
-            clipChannel: .right
+            isEnabled: true,
+            name: "Drums",
+            targetLevelDB: -9,
+            historyRange: .oneMinute
         ),
-        LevelLaneSettings(
+        LevelLaneConfiguration(
             lane: .four,
-            targetDB: -24,
-            historyRange: .twoMinutes,
-            baseDB: -24.5,
-            slowSwingDB: 7.5,
-            fastSwingDB: 2.2,
-            stereoSpreadDB: 2.5,
-            clipPeriodMilliseconds: nil,
-            clipChannel: nil
+            isEnabled: true,
+            name: "Drums",
+            targetLevelDB: -24,
+            historyRange: .twoMinutes
         ),
     ]
-    private let expandedSetting = LevelLaneSettings(
+    private let showcaseExpandedConfiguration = LevelLaneConfiguration(
         lane: .one,
-        targetDB: -12,
-        historyRange: .thirtySeconds,
-        baseDB: -11.5,
-        slowSwingDB: 3.5,
-        fastSwingDB: 1.5,
-        stereoSpreadDB: 1.2,
-        clipPeriodMilliseconds: 19_000,
-        clipChannel: .left
+        isEnabled: true,
+        name: "Drums",
+        targetLevelDB: -12,
+        historyRange: .thirtySeconds
     )
 
     private var historyCursorMilliseconds: UInt64 = 0
@@ -642,50 +639,64 @@ private final class LevelShowcaseDriver: ObservableObject {
     private var generalResetMarks: [UInt64] = []
 
     init() {
-        previousResetStates = LevelShowcaseDriver.syntheticCycleStates(at: 0)
+        previousResetStates = Self.syntheticCycleStates(at: 0)
+        reset()
+    }
+
+    func reset() {
+        historyBuffer = DynamicsCoreFactory.makeHistoryBuffer()
+        resetDetector = TimeDomainFactory.makeResetDetector()
+        clipDetectors = LaneID.allCases.map { _ in
+            DynamicsCoreFactory.makeClipDetector()
+        }
+        statusMachines = Self.makeStatusMachines()
+        historyCursorMilliseconds = 0
+        resetCursorMilliseconds = 0
+        previousResetStates = Self.syntheticCycleStates(at: 0)
+        generalResetMarks = []
         seedHistory()
         seedResetMarks()
     }
 
-    func frames(at date: Date) -> (expanded: LevelRenderFrame, split: LevelRenderFrame) {
+    func snapshot(
+        at elapsedMilliseconds: UInt64,
+        timestamp: TimeInterval,
+        laneConfigurations: [LevelLaneConfiguration]
+    ) -> LevelPreviewSnapshot {
+        let enabledConfigurations = laneConfigurations
+            .filter(\.isEnabled)
+            .sorted { $0.lane.rawValue < $1.lane.rawValue }
+        let preparedSample = prepareSample(at: elapsedMilliseconds)
+        let frames = makeFrames(
+            sample: preparedSample,
+            splitConfigurations: enabledConfigurations,
+            expandedConfiguration: enabledConfigurations.first,
+            timestamp: timestamp
+        )
+
+        return LevelPreviewSnapshot(
+            expandedFrame: frames.expanded,
+            splitFrame: frames.split,
+            statuses: makeStatuses(
+                from: preparedSample,
+                laneConfigurations: laneConfigurations,
+                elapsedMilliseconds: elapsedMilliseconds
+            )
+        )
+    }
+
+    func showcaseFrames(at date: Date) -> (expanded: LevelRenderFrame, split: LevelRenderFrame) {
         let elapsedMilliseconds = UInt64(
-            max(0, (date.timeIntervalSince(startDate) * 1_000.0).rounded())
+            max(0, (date.timeIntervalSince(showcaseStartDate) * 1_000.0).rounded())
         )
-        let playheadMilliseconds = seedDurationMilliseconds + elapsedMilliseconds
-
-        advanceHistory(to: playheadMilliseconds)
-        advanceResetMarks(to: playheadMilliseconds)
-
-        let currentSample = syntheticDisplaySample(at: playheadMilliseconds)
-        let timestamp = date.timeIntervalSinceReferenceDate
-
-        let expandedFrame = presentationPipeline.makeFrame(
-            layout: .singleExpanded,
-            inputs: [
-                makeInput(
-                    for: expandedSetting,
-                    from: currentSample,
-                    columnCount: LevelDesignTokens.expandedColumnCount
-                ),
-            ],
-            generalResetMarks: generalResetMarks,
-            timestamp: timestamp
+        let preparedSample = prepareSample(at: elapsedMilliseconds)
+        let frames = makeFrames(
+            sample: preparedSample,
+            splitConfigurations: showcaseSplitConfigurations,
+            expandedConfiguration: showcaseExpandedConfiguration,
+            timestamp: date.timeIntervalSinceReferenceDate
         )
-
-        let splitFrame = presentationPipeline.makeFrame(
-            layout: .fourWindows,
-            inputs: fourWindowSettings.map {
-                makeInput(
-                    for: $0,
-                    from: currentSample,
-                    columnCount: LevelDesignTokens.fourWindowColumnCount
-                )
-            },
-            generalResetMarks: generalResetMarks,
-            timestamp: timestamp
-        )
-
-        return (expandedFrame, splitFrame)
+        return (frames.expanded, frames.split)
     }
 
     private func seedHistory() {
@@ -732,11 +743,110 @@ private final class LevelShowcaseDriver: ObservableObject {
         )
     }
 
+    private func prepareSample(at elapsedMilliseconds: UInt64) -> DynamicsSample {
+        let playheadMilliseconds = seedDurationMilliseconds + elapsedMilliseconds
+
+        if playheadMilliseconds < historyCursorMilliseconds {
+            reset()
+        }
+
+        advanceHistory(to: playheadMilliseconds)
+        advanceResetMarks(to: playheadMilliseconds)
+        return syntheticDisplaySample(at: playheadMilliseconds)
+    }
+
     private func syntheticDisplaySample(at milliseconds: UInt64) -> DynamicsSample {
         makeDynamicsSample(
             at: milliseconds,
             includeClipState: true
         )
+    }
+
+    private func makeFrames(
+        sample: DynamicsSample,
+        splitConfigurations: [LevelLaneConfiguration],
+        expandedConfiguration: LevelLaneConfiguration?,
+        timestamp: TimeInterval
+    ) -> (expanded: LevelRenderFrame, split: LevelRenderFrame) {
+        let splitInputs = splitConfigurations.compactMap { configuration -> LevelLaneInput? in
+            guard let settings = makeLaneSettings(for: configuration) else {
+                return nil
+            }
+
+            return makeInput(
+                for: settings,
+                from: sample,
+                columnCount: LevelDesignTokens.fourWindowColumnCount
+            )
+        }
+        let expandedInputs: [LevelLaneInput]
+
+        if
+            let expandedConfiguration,
+            let settings = makeLaneSettings(for: expandedConfiguration)
+        {
+            expandedInputs = [
+                makeInput(
+                    for: settings,
+                    from: sample,
+                    columnCount: LevelDesignTokens.expandedColumnCount
+                ),
+            ]
+        } else {
+            expandedInputs = []
+        }
+
+        return (
+            expanded: presentationPipeline.makeFrame(
+                layout: .singleExpanded,
+                inputs: expandedInputs,
+                generalResetMarks: generalResetMarks,
+                timestamp: timestamp
+            ),
+            split: presentationPipeline.makeFrame(
+                layout: .fourWindows,
+                inputs: splitInputs,
+                generalResetMarks: generalResetMarks,
+                timestamp: timestamp
+            )
+        )
+    }
+
+    private func makeStatuses(
+        from sample: DynamicsSample,
+        laneConfigurations: [LevelLaneConfiguration],
+        elapsedMilliseconds: UInt64
+    ) -> [LaneID: LaneInputStatus] {
+        let configurationsByLane = Dictionary(
+            uniqueKeysWithValues: laneConfigurations.map { ($0.lane, $0) }
+        )
+        var statuses: [LaneID: LaneInputStatus] = [:]
+
+        for lane in LaneID.allCases {
+            let configuration = configurationsByLane[lane]
+                ?? LevelLaneConfiguration(
+                    lane: lane,
+                    isEnabled: false,
+                    name: "",
+                    targetLevelDB: SettingsDefaults.defaultTargetLevelDB,
+                    historyRange: SettingsDefaults.defaultHistoryRange
+                )
+            var machine = statusMachines[lane]
+                ?? DynamicsCoreFactory.makeLaneInputStatusMachine(
+                    lane: lane,
+                    channelLabel: Self.channelLabel(for: lane),
+                    laneEnabled: configuration.isEnabled
+                )
+
+            machine.setEnabled(configuration.isEnabled)
+            statuses[lane] = machine.consume(
+                laneSample(from: sample, lane: lane),
+                atMilliseconds: seedDurationMilliseconds + elapsedMilliseconds
+            )
+            statusMachines[lane] = machine
+        }
+
+        return statuses
     }
 
     private func makeInput(
@@ -758,7 +868,7 @@ private final class LevelShowcaseDriver: ObservableObject {
     }
 
     private func recordResetMarks(at milliseconds: UInt64) {
-        let currentStates = LevelShowcaseDriver.syntheticCycleStates(at: milliseconds)
+        let currentStates = Self.syntheticCycleStates(at: milliseconds)
         let resetStates = resetDetector.detectResets(
             previous: previousResetStates,
             current: currentStates
@@ -775,15 +885,17 @@ private final class LevelShowcaseDriver: ObservableObject {
         at milliseconds: UInt64,
         includeClipState: Bool
     ) -> DynamicsSample {
-        let fourWindowSamples = Dictionary(
-            uniqueKeysWithValues: fourWindowSettings.map { settings in
-                (settings.lane, makeLaneSample(settings: settings, at: milliseconds, includeClipState: includeClipState))
+        let samplesByLane = Dictionary(
+            uniqueKeysWithValues: Self.laneProfiles.map { profile in
+                (
+                    profile.lane,
+                    makeLaneSample(
+                        profile: profile,
+                        at: milliseconds,
+                        includeClipState: includeClipState
+                    )
+                )
             }
-        )
-        let expandedSample = makeLaneSample(
-            settings: expandedSetting,
-            at: milliseconds,
-            includeClipState: includeClipState
         )
 
         return DynamicsSample(
@@ -791,38 +903,38 @@ private final class LevelShowcaseDriver: ObservableObject {
             sampleTime: Int64(milliseconds),
             frameCount: 1,
             sampleRate: 1_000,
-            lane1: expandedSample,
-            lane2: fourWindowSamples[.two] ?? LevelShowcaseDriver.emptyLaneSample,
-            lane3: fourWindowSamples[.three] ?? LevelShowcaseDriver.emptyLaneSample,
-            lane4: fourWindowSamples[.four] ?? LevelShowcaseDriver.emptyLaneSample
+            lane1: samplesByLane[.one] ?? Self.emptyLaneSample,
+            lane2: samplesByLane[.two] ?? Self.emptyLaneSample,
+            lane3: samplesByLane[.three] ?? Self.emptyLaneSample,
+            lane4: samplesByLane[.four] ?? Self.emptyLaneSample
         )
     }
 
     private func makeLaneSample(
-        settings: LevelLaneSettings,
+        profile: LevelLaneProfile,
         at milliseconds: UInt64,
         includeClipState: Bool
     ) -> LaneDynamicsSample {
         let time = Double(milliseconds) / 1_000.0
-        let lanePhase = Double(settings.lane.rawValue) * 0.73
+        let lanePhase = Double(profile.lane.rawValue) * 0.73
 
         let bodyDB =
-            settings.baseDB +
-            (settings.slowSwingDB * sin((time * 0.38) + lanePhase)) +
-            (settings.fastSwingDB * sin((time * 1.14) + (lanePhase * 0.61)))
+            profile.baseDB +
+            (profile.slowSwingDB * sin((time * 0.38) + lanePhase)) +
+            (profile.fastSwingDB * sin((time * 1.14) + (lanePhase * 0.61)))
 
         let leftDB = max(
             LevelDecibelScale.floorDB,
             min(
                 -0.5,
-                bodyDB + (settings.stereoSpreadDB * sin((time * 0.87) + lanePhase))
+                bodyDB + (profile.stereoSpreadDB * sin((time * 0.87) + lanePhase))
             )
         )
         let rightDB = max(
             LevelDecibelScale.floorDB,
             min(
                 -0.5,
-                bodyDB - (settings.stereoSpreadDB * cos((time * 0.93) + (lanePhase * 0.77)))
+                bodyDB - (profile.stereoSpreadDB * cos((time * 0.93) + (lanePhase * 0.77)))
             )
         )
 
@@ -833,8 +945,8 @@ private final class LevelShowcaseDriver: ObservableObject {
         var peakRight = min(0.98, max(rmsRight * 1.45, rmsRight))
 
         if
-            let clipPeriodMilliseconds = settings.clipPeriodMilliseconds,
-            let clipChannel = settings.clipChannel
+            let clipPeriodMilliseconds = profile.clipPeriodMilliseconds,
+            let clipChannel = profile.clipChannel
         {
             let window = milliseconds % clipPeriodMilliseconds
             let clipActive = window >= (clipPeriodMilliseconds - 700)
@@ -851,7 +963,7 @@ private final class LevelShowcaseDriver: ObservableObject {
 
         let clipState: (left: Bool, right: Bool)
         if includeClipState {
-            let detector = clipDetectors[settings.lane.rawValue - 1]
+            let detector = clipDetectors[profile.lane.rawValue - 1]
             clipState = detector.detectClipping(
                 leftPeak: peakLeft,
                 rightPeak: peakRight
@@ -867,6 +979,26 @@ private final class LevelShowcaseDriver: ObservableObject {
             peakRight: peakRight,
             clipLeft: clipState.left,
             clipRight: clipState.right
+        )
+    }
+
+    private func makeLaneSettings(
+        for configuration: LevelLaneConfiguration
+    ) -> LevelLaneSettings? {
+        guard let profile = Self.laneProfiles.first(where: { $0.lane == configuration.lane }) else {
+            return nil
+        }
+
+        return LevelLaneSettings(
+            lane: configuration.lane,
+            targetDB: CGFloat(configuration.targetLevelDB),
+            historyRange: configuration.historyRange,
+            baseDB: profile.baseDB,
+            slowSwingDB: profile.slowSwingDB,
+            fastSwingDB: profile.fastSwingDB,
+            stereoSpreadDB: profile.stereoSpreadDB,
+            clipPeriodMilliseconds: profile.clipPeriodMilliseconds,
+            clipChannel: profile.clipChannel
         )
     }
 
@@ -906,6 +1038,72 @@ private final class LevelShowcaseDriver: ObservableObject {
         }
     }
 
+    private static func makeStatusMachines() -> [LaneID: LaneInputStatusMachine] {
+        Dictionary(
+            uniqueKeysWithValues: LaneID.allCases.map { lane in
+                (
+                    lane,
+                    DynamicsCoreFactory.makeLaneInputStatusMachine(
+                        lane: lane,
+                        channelLabel: channelLabel(for: lane)
+                    )
+                )
+            }
+        )
+    }
+
+    private static func channelLabel(for lane: LaneID) -> String {
+        switch lane {
+        case .one:
+            return "BlackHole 1-2"
+        case .two:
+            return "BlackHole 3-4"
+        case .three:
+            return "BlackHole 5-6"
+        case .four:
+            return "BlackHole 7-8"
+        }
+    }
+
+    private static let laneProfiles: [LevelLaneProfile] = [
+        LevelLaneProfile(
+            lane: .one,
+            baseDB: -11.5,
+            slowSwingDB: 3.5,
+            fastSwingDB: 1.5,
+            stereoSpreadDB: 1.2,
+            clipPeriodMilliseconds: 19_000,
+            clipChannel: .left
+        ),
+        LevelLaneProfile(
+            lane: .two,
+            baseDB: -17.0,
+            slowSwingDB: 5.0,
+            fastSwingDB: 1.8,
+            stereoSpreadDB: 1.6,
+            clipPeriodMilliseconds: nil,
+            clipChannel: nil
+        ),
+        LevelLaneProfile(
+            lane: .three,
+            baseDB: -13.0,
+            slowSwingDB: 6.5,
+            fastSwingDB: 2.4,
+            stereoSpreadDB: 2.0,
+            clipPeriodMilliseconds: 23_000,
+            clipChannel: .right
+        ),
+        LevelLaneProfile(
+            lane: .four,
+            baseDB: -24.5,
+            slowSwingDB: 7.5,
+            fastSwingDB: 2.2,
+            stereoSpreadDB: 2.5,
+            clipPeriodMilliseconds: nil,
+            clipChannel: nil
+        ),
+    ]
+
     private static let emptyLaneSample = LaneDynamicsSample(
         rmsLeft: 0,
         rmsRight: 0,
@@ -917,7 +1115,7 @@ private final class LevelShowcaseDriver: ObservableObject {
 }
 
 struct LevelRendererShowcase: View {
-    @StateObject private var driver = LevelShowcaseDriver()
+    @StateObject private var driver = ShowcaseDriver()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
@@ -962,6 +1160,14 @@ struct LevelRendererShowcase: View {
             }
         }
         .frame(minWidth: 1_400, minHeight: 900)
+    }
+}
+
+private final class ShowcaseDriver: ObservableObject {
+    private let previewDriver = LevelPreviewDriver()
+
+    func frames(at date: Date) -> (expanded: LevelRenderFrame, split: LevelRenderFrame) {
+        previewDriver.showcaseFrames(at: date)
     }
 }
 

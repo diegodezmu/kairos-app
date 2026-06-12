@@ -107,4 +107,30 @@ final class SettingsModel {
             settings: preset
         )
     }
+
+    func updateGridCycle(
+        slot: CycleSlot,
+        _ update: (inout GridCycleSettings) -> Void
+    ) {
+        guard let index = gridCycles.firstIndex(where: { $0.slot == slot }) else {
+            return
+        }
+
+        var cycle = gridCycles[index]
+        update(&cycle)
+        gridCycles[index] = cycle
+    }
+
+    func updateLevelLane(
+        lane: LaneID,
+        _ update: (inout LevelLaneConfiguration) -> Void
+    ) {
+        guard let index = levelLanes.firstIndex(where: { $0.lane == lane }) else {
+            return
+        }
+
+        var levelLane = levelLanes[index]
+        update(&levelLane)
+        levelLanes[index] = levelLane
+    }
 }

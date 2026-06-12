@@ -4,13 +4,7 @@ import SwiftUI
 struct KairosApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            DesktopShellRootView()
         }
-    }
-}
-
-private struct ContentView: View {
-    var body: some View {
-        LevelRendererShowcase()
     }
 }

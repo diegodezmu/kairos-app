@@ -24,6 +24,7 @@ struct GridRenderFrame: Sendable, Equatable {
 
     struct Cycle: Identifiable, Sendable, Equatable {
         let slot: CycleSlot
+        let mode: Mode
         let stepCount: Int
         let activeStepIndex: Int?
         let anticipationRange: Range<Int>?
@@ -34,29 +35,40 @@ struct GridRenderFrame: Sendable, Equatable {
         }
     }
 
-    let mode: Mode
     let cycles: [Cycle]
+
+    var accessibilityLabel: String {
+        guard
+            let firstMode = cycles.first?.mode,
+            cycles.allSatisfy({ $0.mode == firstMode })
+        else {
+            return "Kairos grid"
+        }
+
+        return "\(firstMode.displayName) grid"
+    }
+
+    init(cycles: [Cycle]) {
+        self.cycles = cycles.sorted { $0.slot.rawValue < $1.slot.rawValue }
+    }
 
     init(
         mode: Mode,
         currentStates: [CycleState],
         resetStates: [CycleResetState] = []
     ) {
-        self.mode = mode
-
         let resetMarks = GridResetMarkMapper.map(resetStates)
-
-        cycles = currentStates
-            .sorted { $0.config.slot.rawValue < $1.config.slot.rawValue }
+        self.init(cycles: currentStates
             .map { state in
                 Cycle(
                     slot: state.config.slot,
+                    mode: mode,
                     stepCount: state.config.stepNumber.rawValue,
                     activeStepIndex: state.currentStep,
                     anticipationRange: state.anticipationRange,
                     resetMark: resetMarks[state.config.slot] ?? .none
                 )
-            }
+            })
     }
 }
 
@@ -103,7 +115,7 @@ struct GridRenderer: View {
             )
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(frame.mode.displayName) grid"))
+        .accessibilityLabel(Text(frame.accessibilityLabel))
     }
 
     static func idealHeight(for cycleCount: Int) -> CGFloat {
@@ -144,7 +156,6 @@ private enum GridCanvasRenderer {
             )
             drawCycle(
                 cycle,
-                mode: frame.mode,
                 in: &context,
                 rowRect: rowRect
             )
@@ -153,7 +164,6 @@ private enum GridCanvasRenderer {
 
     private static func drawCycle(
         _ cycle: GridRenderFrame.Cycle,
-        mode: GridRenderFrame.Mode,
         in context: inout GraphicsContext,
         rowRect: CGRect
     ) {
@@ -187,7 +197,7 @@ private enum GridCanvasRenderer {
                 in: &context,
                 rect: stepRect,
                 state: visualState,
-                mode: mode
+                mode: cycle.mode
             )
         }
     }
@@ -354,6 +364,102 @@ private enum GridDesignTokens {
     static let desktopRowHeight: CGFloat = (desktopPanelHeight - (rowGap * 3)) / 4
 }
 
+final class GridPreviewDriver {
+    private let cycleEngine: any CycleEngine = TimeDomainFactory.makeCycleEngine()
+    private let resetDetector: any ResetDetector = TimeDomainFactory.makeResetDetector()
+    private var previousStatesBySlot: [CycleSlot: CycleState] = [:]
+
+    func reset() {
+        previousStatesBySlot = [:]
+    }
+
+    func makeFrame(
+        settings: [GridCycleSettings],
+        bpm: Int,
+        offset: Offset,
+        elapsedSeconds: TimeInterval
+    ) -> GridRenderFrame {
+        let enabledSettings = settings
+            .filter(\.isEnabled)
+            .sorted { $0.slot.rawValue < $1.slot.rawValue }
+
+        guard !enabledSettings.isEmpty else {
+            previousStatesBySlot = [:]
+            return GridRenderFrame(cycles: [])
+        }
+
+        let beat = max(
+            0,
+            (elapsedSeconds * (Double(bpm) / 60.0)) + offset.beats(atTempo: Double(bpm))
+        )
+        let currentStates = cycleEngine.resolveStates(
+            for: enabledSettings.map(\.cycleConfig),
+            beat: beat,
+            frozenOriginBeat: 0
+        )
+
+        let resetStates = resetStates(
+            currentStates: currentStates,
+            enabledSettings: enabledSettings
+        )
+        let resetMarks = GridResetMarkMapper.map(resetStates)
+
+        previousStatesBySlot = Dictionary(
+            uniqueKeysWithValues: currentStates.map { ($0.config.slot, $0) }
+        )
+
+        let statesBySlot = Dictionary(
+            uniqueKeysWithValues: currentStates.map { ($0.config.slot, $0) }
+        )
+
+        let cycles = enabledSettings.compactMap { setting -> GridRenderFrame.Cycle? in
+            guard let state = statesBySlot[setting.slot] else {
+                return nil
+            }
+
+            return GridRenderFrame.Cycle(
+                slot: setting.slot,
+                mode: setting.visualMode.renderMode(for: setting.stepNumber),
+                stepCount: state.config.stepNumber.rawValue,
+                activeStepIndex: state.currentStep,
+                anticipationRange: state.anticipationRange,
+                resetMark: resetMarks[setting.slot] ?? .none
+            )
+        }
+
+        return GridRenderFrame(cycles: cycles)
+    }
+
+    private func resetStates(
+        currentStates: [CycleState],
+        enabledSettings: [GridCycleSettings]
+    ) -> [CycleResetState] {
+        let previousStates = enabledSettings.compactMap { previousStatesBySlot[$0.slot] }
+
+        guard previousStates.count == currentStates.count else {
+            return []
+        }
+
+        return resetDetector.detectResets(
+            previous: previousStates,
+            current: currentStates
+        )
+    }
+}
+
+private extension GridVisualMode {
+    func renderMode(for stepNumber: StepNumber) -> GridRenderFrame.Mode {
+        switch self {
+        case .block:
+            return .block
+        case .border:
+            return .border
+        case .line:
+            return stepNumber.rawValue > StepNumber.thirtyTwo.rawValue ? .lineSM : .lineMD
+        }
+    }
+}
+
 struct GridRendererShowcase: View {
     private let sections = GridRendererShowcaseData.sections
 
@@ -392,7 +498,7 @@ private struct GridRendererShowcaseSection: Identifiable {
     let caption: String
 
     var id: String {
-        frame.mode.rawValue
+        title
     }
 }
 

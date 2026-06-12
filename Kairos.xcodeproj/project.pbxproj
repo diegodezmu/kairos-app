@@ -18,6 +18,7 @@
 		F10000000000000000000038 /* PresetStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001A /* PresetStoreTests.swift */; };
 		F10000000000000000000039 /* KairosCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000092 /* KairosCore */; };
 		F1000000000000000000003A /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001C /* XCTest.framework */; };
+		F1000000000000000000003B /* DesktopShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001D /* DesktopShell.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +43,7 @@
 		F10000000000000000000019 /* PresetStoreDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStoreDTOs.swift; sourceTree = "<group>"; };
 		F1000000000000000000001A /* PresetStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStoreTests.swift; sourceTree = "<group>"; };
 		F1000000000000000000001C /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		F1000000000000000000001D /* DesktopShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopShell.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +94,7 @@
 				F10000000000000000000017 /* SettingsModel.swift */,
 				F10000000000000000000018 /* PresetStore.swift */,
 				F10000000000000000000019 /* PresetStoreDTOs.swift */,
+				F1000000000000000000001D /* DesktopShell.swift */,
 				F10000000000000000000014 /* GridRenderer.swift */,
 				F10000000000000000000015 /* LevelRenderer.swift */,
 			);
@@ -225,6 +228,7 @@
 				F10000000000000000000035 /* SettingsModel.swift in Sources */,
 				F10000000000000000000036 /* PresetStore.swift in Sources */,
 				F10000000000000000000037 /* PresetStoreDTOs.swift in Sources */,
+				F1000000000000000000003B /* DesktopShell.swift in Sources */,
 				F10000000000000000000031 /* GridRenderer.swift in Sources */,
 				F10000000000000000000033 /* LevelRenderer.swift in Sources */,
 			);

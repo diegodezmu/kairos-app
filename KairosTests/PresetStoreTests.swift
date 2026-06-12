@@ -34,6 +34,96 @@ final class PresetStoreTests: XCTestCase {
         )
     }
 
+    func testGridPreviewDriverMapsPerCycleModesAndSkipsDisabledCycles() {
+        let driver = GridPreviewDriver()
+        let frame = driver.makeFrame(
+            settings: [
+                GridCycleSettings(
+                    slot: .one,
+                    isEnabled: true,
+                    name: "Cycle 1",
+                    stepNumber: .sixteen,
+                    pulse: .oneQuarter,
+                    visualMode: .block
+                ),
+                GridCycleSettings(
+                    slot: .two,
+                    isEnabled: false,
+                    name: "Cycle 2",
+                    stepNumber: .thirtyTwo,
+                    pulse: .oneQuarter,
+                    visualMode: .border
+                ),
+                GridCycleSettings(
+                    slot: .three,
+                    isEnabled: true,
+                    name: "Cycle 3",
+                    stepNumber: .sixtyFour,
+                    pulse: .oneQuarter,
+                    visualMode: .line
+                ),
+                GridCycleSettings(
+                    slot: .four,
+                    isEnabled: true,
+                    name: "Cycle 4",
+                    stepNumber: .sixteen,
+                    pulse: .oneQuarter,
+                    visualMode: .line
+                ),
+            ],
+            bpm: 120,
+            offset: Offset(milliseconds: 0),
+            elapsedSeconds: 1
+        )
+
+        XCTAssertEqual(frame.cycles.map(\.slot), [.one, .three, .four])
+        XCTAssertEqual(frame.cycles.map(\.mode), [.block, .lineSM, .lineMD])
+    }
+
+    func testLevelPreviewDriverReturnsExpandedFrameAndLaneStatuses() {
+        let driver = LevelPreviewDriver()
+        let snapshot = driver.snapshot(
+            at: 1_000,
+            timestamp: 1,
+            laneConfigurations: [
+                LevelLaneConfiguration(
+                    lane: .one,
+                    isEnabled: true,
+                    name: "Drums",
+                    targetLevelDB: -12,
+                    historyRange: .tenSeconds
+                ),
+                LevelLaneConfiguration(
+                    lane: .two,
+                    isEnabled: false,
+                    name: "FX",
+                    targetLevelDB: -18,
+                    historyRange: .thirtySeconds
+                ),
+                LevelLaneConfiguration(
+                    lane: .three,
+                    isEnabled: false,
+                    name: "Synth",
+                    targetLevelDB: -9,
+                    historyRange: .oneMinute
+                ),
+                LevelLaneConfiguration(
+                    lane: .four,
+                    isEnabled: false,
+                    name: "Bass",
+                    targetLevelDB: -24,
+                    historyRange: .twoMinutes
+                ),
+            ]
+        )
+
+        XCTAssertEqual(snapshot.expandedFrame.lanes.count, 1)
+        XCTAssertEqual(snapshot.splitFrame.lanes.count, 1)
+        XCTAssertEqual(snapshot.statuses[.one]?.lane, .one)
+        XCTAssertEqual(snapshot.statuses[.two]?.state, .disabled)
+        XCTAssertFalse(snapshot.statuses[.one]?.displayLabel.isEmpty ?? true)
+    }
+
     private func makePreset(seed: Int) -> SettingsPreset {
         let syncSources: [SyncSource] = [
             .internalClock,
