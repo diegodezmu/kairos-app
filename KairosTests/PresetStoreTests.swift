@@ -154,15 +154,16 @@ final class PresetStoreTests: XCTestCase {
         )
     }
 
-    func testGridPreviewDriverSixteenStepQuarterPulseTakesFourBeats() {
+    func testGridPreviewDriverSixteenStepQuarterPulseTakesSixteenBeats() {
         let driver = GridPreviewDriver()
         let settings = [makeEnabledCycle()]
         let checkpoints: [(elapsedSeconds: TimeInterval, expectedStep: Int)] = [
             (0.0, 0),
-            (0.5, 4),
-            (1.0, 8),
-            (1.5, 12),
-            (2.0, 0),
+            (0.5, 1),
+            (1.0, 2),
+            (4.0, 8),
+            (7.5, 15),
+            (8.0, 0),
         ]
 
         for checkpoint in checkpoints {
@@ -207,7 +208,7 @@ final class PresetStoreTests: XCTestCase {
         model.togglePlay()
 
         let advancedSnapshot = model.snapshot(at: advancedDate)
-        XCTAssertEqual(advancedSnapshot.gridFrame.cycles.first?.activeStepIndex, 8)
+        XCTAssertEqual(advancedSnapshot.gridFrame.cycles.first?.activeStepIndex, 2)
 
         clock.now = advancedDate
         model.resetPreview()
@@ -217,7 +218,7 @@ final class PresetStoreTests: XCTestCase {
 
         let resumedDate = advancedDate.addingTimeInterval(0.5)
         let resumedSnapshot = model.snapshot(at: resumedDate)
-        XCTAssertEqual(resumedSnapshot.gridFrame.cycles.first?.activeStepIndex, 4)
+        XCTAssertEqual(resumedSnapshot.gridFrame.cycles.first?.activeStepIndex, 1)
     }
 
     private func makePreset(seed: Int) -> SettingsPreset {

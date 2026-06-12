@@ -20,7 +20,7 @@ public enum StepNumber: Int, CaseIterable, Sendable {
     case oneHundredTwentyEight = 128
 }
 
-/// Allowed pulse durations in beats from PRD 5.3 / 15.5.
+/// Allowed pulse note fractions from PRD 5.3 / 15.5.
 public enum Pulse: Double, CaseIterable, Sendable {
     case oneSixteenth = 0.0625
     case oneEighth = 0.125
@@ -33,6 +33,11 @@ public enum Pulse: Double, CaseIterable, Sendable {
     case sixteen = 16
     case thirtyTwo = 32
     case sixtyFour = 64
+
+    /// Resolves the musical note value to beat duration where a quarter note is 1 beat.
+    public var stepDurationBeats: Double {
+        rawValue * 4.0
+    }
 }
 
 /// Immutable cycle definition consumed by the temporal layer.

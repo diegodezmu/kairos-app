@@ -21,13 +21,13 @@ final class TimeDomainPublicConstructionTests: XCTestCase {
             frozenOriginBeat: 0.0
         )
 
-        XCTAssertEqual(current.map(\.currentStep), [0, 0])
-        XCTAssertEqual(current.map(\.cycleIteration), [1, 1])
+        XCTAssertEqual(current.map(\.currentStep), [1, 2])
+        XCTAssertEqual(current.map(\.cycleIteration), [0, 0])
         XCTAssertEqual(
             detector.detectResets(previous: previous, current: current),
             [
-                CycleResetState(slot: .one, mark: .general),
-                CycleResetState(slot: .two, mark: .general),
+                CycleResetState(slot: .one, mark: .none),
+                CycleResetState(slot: .two, mark: .none),
             ]
         )
     }

@@ -20,26 +20,26 @@ final class TimeDomainContractTablesTests: XCTestCase {
                 pulse: .oneQuarter,
                 beat: 103.99,
                 frozenOriginBeat: 100.0,
-                expectedCurrentStep: 15,
+                expectedCurrentStep: 3,
                 expectedCycleIteration: 0
             ),
             .init(
-                name: "exact cycle wrap returns to step zero on next iteration",
+                name: "four quarter-note beats reach step four inside the first cycle",
                 stepNumber: .sixteen,
                 pulse: .oneQuarter,
                 beat: 104.0,
                 frozenOriginBeat: 100.0,
-                expectedCurrentStep: 0,
-                expectedCycleIteration: 1
+                expectedCurrentStep: 4,
+                expectedCycleIteration: 0
             ),
             .init(
-                name: "whole-beat pulse keeps zero-based modulo",
+                name: "whole-note pulse advances once every four beats",
                 stepNumber: .eight,
                 pulse: .one,
                 beat: 110.5,
                 frozenOriginBeat: 100.0,
                 expectedCurrentStep: 2,
-                expectedCycleIteration: 1
+                expectedCycleIteration: 0
             ),
             .init(
                 name: "post-tempo sample stays continuous with frozen origin beat",
@@ -47,17 +47,17 @@ final class TimeDomainContractTablesTests: XCTestCase {
                 pulse: .oneQuarter,
                 beat: 139.665_991,
                 frozenOriginBeat: 100.0,
-                expectedCurrentStep: 30,
-                expectedCycleIteration: 1
+                expectedCurrentStep: 39,
+                expectedCycleIteration: 0
             ),
             .init(
-                name: "longer pulse still advances iterations deterministically",
+                name: "double-whole pulse still advances deterministically",
                 stepNumber: .four,
                 pulse: .two,
                 beat: 124.0,
                 frozenOriginBeat: 100.0,
-                expectedCurrentStep: 0,
-                expectedCycleIteration: 3
+                expectedCurrentStep: 3,
+                expectedCycleIteration: 0
             ),
         ]
 

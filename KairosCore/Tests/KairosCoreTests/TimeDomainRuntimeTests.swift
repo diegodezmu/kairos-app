@@ -31,8 +31,8 @@ final class TimeDomainRuntimeTests: XCTestCase {
         )
 
         XCTAssertEqual(initialOriginBeat, 100.0)
-        XCTAssertEqual(preTempoState.currentStep, 6)
-        XCTAssertEqual(preTempoState.cycleIteration, 1)
+        XCTAssertEqual(preTempoState.currentStep, 33)
+        XCTAssertEqual(preTempoState.cycleIteration, 0)
 
         clock.tempo = 90.0
         clock.beatResolver = { hostTime in
@@ -59,9 +59,9 @@ final class TimeDomainRuntimeTests: XCTestCase {
         )
 
         XCTAssertEqual(postTempoOriginBeat, 100.0)
-        XCTAssertEqual(postTempoState.currentStep, 30)
-        XCTAssertEqual(postTempoState.cycleIteration, 1)
-        XCTAssertEqual(regressedState.currentStep, 125)
+        XCTAssertEqual(postTempoState.currentStep, 39)
+        XCTAssertEqual(postTempoState.cycleIteration, 0)
+        XCTAssertEqual(regressedState.currentStep, 31)
         XCTAssertEqual(regressedState.cycleIteration, 0)
     }
 

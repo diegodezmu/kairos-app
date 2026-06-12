@@ -19,9 +19,8 @@ struct DefaultCycleEngine: CycleEngine {
         }
 
         let stepNumber = config.stepNumber.rawValue
-        let pulse = config.pulse.rawValue
         let elapsedBeats = beat - frozenOriginBeat
-        let stepFloat = elapsedBeats / pulse
+        let stepFloat = elapsedBeats / config.pulse.stepDurationBeats
         let wrappedStepIndex = Int(floor(stepFloat))
         let currentStep = positiveModulo(wrappedStepIndex, stepNumber)
         let cycleIteration = Int(floor(stepFloat / Double(stepNumber)))
