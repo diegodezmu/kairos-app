@@ -1,14 +1,15 @@
 import Foundation
 
 /// Captures `originBeat` exactly once from the shared transport origin.
-struct OriginLatch: Sendable {
-    private(set) var frozenOriginBeat: Double?
+public struct OriginLatch: Sendable {
+    public private(set) var frozenOriginBeat: Double?
 
-    init(frozenOriginBeat: Double? = nil) {
+    public init(frozenOriginBeat: Double? = nil) {
         self.frozenOriginBeat = frozenOriginBeat
     }
 
-    mutating func observe(clock: some ClockSource) -> Double? {
+    @discardableResult
+    public mutating func observe(clock: some ClockSource) -> Double? {
         observe(
             hasOrigin: clock.hasOrigin,
             originHostTime: clock.originHostTime,
@@ -16,7 +17,8 @@ struct OriginLatch: Sendable {
         )
     }
 
-    mutating func observe(
+    @discardableResult
+    public mutating func observe(
         hasOrigin: Bool,
         originHostTime: UInt64?,
         beatAtHostTime: (UInt64) -> Double
@@ -34,7 +36,7 @@ struct OriginLatch: Sendable {
         return beat
     }
 
-    mutating func reset() {
+    public mutating func reset() {
         frozenOriginBeat = nil
     }
 }
