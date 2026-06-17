@@ -29,6 +29,7 @@ struct LevelRenderFrame: Sendable, Equatable {
         }
 
         let lane: LaneID
+        let name: String
         let targetDB: CGFloat
         let historyRange: HistoryRange
         let latestHostTime: UInt64
@@ -42,7 +43,6 @@ struct LevelRenderFrame: Sendable, Equatable {
 
     let layout: Layout
     let lanes: [Lane]
-    let generalResetMarks: [UInt64]
 }
 
 struct LevelRenderer: View {
@@ -53,18 +53,12 @@ struct LevelRenderer: View {
             switch frame.layout {
             case .singleExpanded:
                 if let lane = frame.lanes.first {
-                    LevelWindowCanvas(
-                        lane: lane,
-                        generalResetMarks: frame.generalResetMarks
-                    )
+                    LevelWindowCanvas(lane: lane)
                 }
             case .fourWindows:
                 HStack(spacing: LevelDesignTokens.windowGap) {
                     ForEach(frame.lanes) { lane in
-                        LevelWindowCanvas(
-                            lane: lane,
-                            generalResetMarks: frame.generalResetMarks
-                        )
+                        LevelWindowCanvas(lane: lane)
                     }
                 }
             }
@@ -85,20 +79,32 @@ struct LevelRenderer: View {
 
 private struct LevelWindowCanvas: View {
     let lane: LevelRenderFrame.Lane
-    let generalResetMarks: [UInt64]
 
     var body: some View {
-        Canvas(
-            opaque: true,
-            colorMode: .linear,
-            rendersAsynchronously: false
-        ) { context, size in
-            LevelCanvasRenderer.draw(
-                lane: lane,
-                generalResetMarks: generalResetMarks,
-                in: &context,
-                size: size
-            )
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Canvas(opaque: true, rendersAsynchronously: false) { context, size in
+                    context.withCGContext { cgContext in
+                        LevelCanvasRenderer.draw(
+                            lane: lane,
+                            in: cgContext,
+                            size: size
+                        )
+                    }
+                }
+
+                Text(lane.name)
+                    .font(Font.custom("Inter", size: 14).weight(.medium))
+                    .foregroundStyle(LevelDesignTokens.textSecondary.color)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, LevelDesignTokens.titleTopPadding)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
+                LevelScaleLabelsOverlay(size: geometry.size)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
         .clipShape(
             RoundedRectangle(
@@ -107,12 +113,51 @@ private struct LevelWindowCanvas: View {
             )
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Source \(lane.lane.rawValue) level meter"))
+        .accessibilityLabel(Text("\(lane.name) level meter"))
     }
 }
 
-private enum LevelCanvasRenderer {
-    private static let scaleBands: [(db: CGFloat, label: String)] = [
+private struct LevelScaleLabelsOverlay: View {
+    let size: CGSize
+
+    var body: some View {
+        let canvasRect = CGRect(origin: .zero, size: size)
+        let contentRect = LevelCanvasLayout.contentRect(in: canvasRect)
+        let meterRect = CGRect(
+            x: contentRect.minX + LevelDesignTokens.labelWidth + LevelDesignTokens.labelGap,
+            y: contentRect.minY,
+            width: max(0, contentRect.width - (LevelDesignTokens.labelWidth + LevelDesignTokens.labelGap)),
+            height: max(0, contentRect.height)
+        )
+
+        if meterRect.width > 0, meterRect.height > 0 {
+            ZStack(alignment: .topLeading) {
+                ForEach(LevelScaleGuide.bands, id: \.label) { band in
+                    Text(band.label)
+                        .font(Font.custom("Inter", size: 14).weight(.medium))
+                        .foregroundStyle(labelColor(for: band.db))
+                        .frame(
+                            width: LevelDesignTokens.labelWidth,
+                            alignment: .trailing
+                        )
+                        .position(
+                            x: contentRect.minX + (LevelDesignTokens.labelWidth / 2),
+                            y: LevelScaleGuide.yPosition(for: band.db, in: meterRect)
+                        )
+                }
+            }
+        }
+    }
+
+    private func labelColor(for db: CGFloat) -> Color {
+        // All scale labels share the same tertiary grey — the target reference is
+        // expressed by the dashed line, not by tinting the -12 label.
+        LevelDesignTokens.textTertiary.color
+    }
+}
+
+private enum LevelScaleGuide {
+    static let bands: [(db: CGFloat, label: String)] = [
         (0, "0"),
         (-6, "- 6"),
         (-12, "- 12"),
@@ -122,23 +167,49 @@ private enum LevelCanvasRenderer {
         (-60, "- 60"),
     ]
 
+    static func yPosition(
+        for db: CGFloat,
+        in rect: CGRect
+    ) -> CGFloat {
+        let clamped = min(max(db, LevelDecibelScale.floorDB), LevelDecibelScale.ceilingDB)
+        let progress = (LevelDecibelScale.ceilingDB - clamped) / LevelDecibelScale.visibleRange
+        return rect.minY + (progress * rect.height)
+    }
+}
+
+private enum LevelCanvasLayout {
+    static func contentRect(in canvasRect: CGRect) -> CGRect {
+        let horizontalInset = min(LevelDesignTokens.panelPadding, canvasRect.width / 4)
+        let bottomInset = min(LevelDesignTokens.panelPadding, canvasRect.height / 4)
+        let topInset = min(LevelDesignTokens.titleStackHeight, canvasRect.height / 3)
+
+        return CGRect(
+            x: canvasRect.minX + horizontalInset,
+            y: canvasRect.minY + topInset,
+            width: max(0, canvasRect.width - (horizontalInset * 2)),
+            height: max(0, canvasRect.height - topInset - bottomInset)
+        )
+    }
+}
+
+private enum LevelCanvasRenderer {
     static func draw(
         lane: LevelRenderFrame.Lane,
-        generalResetMarks: [UInt64],
-        in context: inout GraphicsContext,
+        in context: CGContext,
         size: CGSize
     ) {
         let canvasRect = CGRect(origin: .zero, size: size)
-        let backgroundPath = Path(
+        let backgroundPath = CGPath(
             roundedRect: canvasRect,
-            cornerRadius: LevelDesignTokens.radiusCanvas
+            cornerWidth: LevelDesignTokens.radiusCanvas,
+            cornerHeight: LevelDesignTokens.radiusCanvas,
+            transform: nil
         )
-        context.fill(backgroundPath, with: .color(LevelDesignTokens.backgroundSurface.color))
+        context.setFillColor(LevelDesignTokens.backgroundSurface.cgColor)
+        context.addPath(backgroundPath)
+        context.fillPath()
 
-        let contentRect = canvasRect.insetBy(
-            dx: min(LevelDesignTokens.panelPadding, canvasRect.width / 4),
-            dy: min(LevelDesignTokens.panelPadding, canvasRect.height / 4)
-        )
+        let contentRect = LevelCanvasLayout.contentRect(in: canvasRect)
         let meterX = contentRect.minX + LevelDesignTokens.labelWidth + LevelDesignTokens.labelGap
         let meterRect = CGRect(
             x: meterX,
@@ -151,55 +222,50 @@ private enum LevelCanvasRenderer {
             return
         }
 
-        context.fill(
-            Path(meterRect),
-            with: .color(LevelDesignTokens.meterBackground.color)
-        )
+        context.setFillColor(LevelDesignTokens.meterBackground.cgColor)
+        context.fill(meterRect)
 
         drawChannel(
             lane.left,
             latestHostTime: lane.latestHostTime,
             historyRange: lane.historyRange,
-            in: &context,
+            in: context,
             meterRect: meterRect
         )
         drawChannel(
             lane.right,
             latestHostTime: lane.latestHostTime,
             historyRange: lane.historyRange,
-            in: &context,
+            in: context,
             meterRect: meterRect
         )
-        drawResetMarks(
-            generalResetMarks,
-            latestHostTime: lane.latestHostTime,
-            historyRange: lane.historyRange,
-            in: &context,
+        drawScale(in: context, meterRect: meterRect)
+        drawTargetLine(
+            targetDB: lane.targetDB,
+            in: context,
             meterRect: meterRect
         )
-        drawScale(in: &context, meterRect: meterRect)
         drawBorders(
             for: lane.left,
             latestHostTime: lane.latestHostTime,
             historyRange: lane.historyRange,
-            in: &context,
+            in: context,
             meterRect: meterRect
         )
         drawBorders(
             for: lane.right,
             latestHostTime: lane.latestHostTime,
             historyRange: lane.historyRange,
-            in: &context,
+            in: context,
             meterRect: meterRect
         )
-        drawLabels(in: &context, meterRect: meterRect)
     }
 
     private static func drawChannel(
         _ channel: LevelRenderFrame.Lane.Channel,
         latestHostTime: UInt64,
         historyRange: HistoryRange,
-        in context: inout GraphicsContext,
+        in context: CGContext,
         meterRect: CGRect
     ) {
         let meanPoints = LevelMassGeometry.contourPoints(
@@ -215,42 +281,19 @@ private enum LevelCanvasRenderer {
             contourPoints: meanPoints,
             meterRect: meterRect
         ) {
-            context.fill(Path(fillRect), with: .color(channel.fillColor.color))
+            context.setFillColor(channel.fillColor.cgColor)
+            context.fill(fillRect)
         }
-
-        let upperPoints = LevelMassGeometry.contourPoints(
-            for: channel.columns,
-            currentDB: channel.currentDB,
-            latestHostTime: latestHostTime,
-            historyRange: historyRange,
-            in: meterRect,
-            value: \.maximumDB
-        )
-        let lowerPoints = LevelMassGeometry.contourPoints(
-            for: channel.columns,
-            currentDB: channel.currentDB,
-            latestHostTime: latestHostTime,
-            historyRange: historyRange,
-            in: meterRect,
-            value: \.minimumDB
-        )
-
-        if let rangePath = rangeEnvelopePath(
-            upperPoints: upperPoints,
-            lowerPoints: lowerPoints
-        ) {
-            context.fill(
-                rangePath,
-                with: .color(channel.fillColor.withOpacity(0.16).color)
-            )
-        }
+        // The min/max range envelope (a light translucent band) is not part of the
+        // Figma design — it reads as a grey shadow/projection artifact, so it is
+        // intentionally not drawn. Only the solid mass + mean border remain.
     }
 
     private static func drawBorders(
         for channel: LevelRenderFrame.Lane.Channel,
         latestHostTime: UInt64,
         historyRange: HistoryRange,
-        in context: inout GraphicsContext,
+        in context: CGContext,
         meterRect: CGRect
     ) {
         let borderPoints = LevelMassGeometry.contourPoints(
@@ -266,133 +309,65 @@ private enum LevelCanvasRenderer {
             return
         }
 
-        var borderPath = Path()
-        borderPath.move(to: firstPoint)
-        borderPath.addLines(Array(borderPoints.dropFirst()))
+        // `addLines(between:)` starts its own subpath at the array's first element,
+        // so passing the full array (not dropFirst) is required — otherwise the
+        // first segment from the meter's left edge is never stroked, leaving the
+        // start of the history without a coloured border.
+        _ = firstPoint
+        let borderPath = CGMutablePath()
+        borderPath.addLines(between: borderPoints)
 
-        context.stroke(
-            borderPath,
-            with: .color(channel.borderColor.color),
-            style: StrokeStyle(
-                lineWidth: LevelDesignTokens.borderWidth,
-                lineCap: .round,
-                lineJoin: .round
-            )
-        )
-    }
-
-    private static func drawResetMarks(
-        _ marks: [UInt64],
-        latestHostTime: UInt64,
-        historyRange: HistoryRange,
-        in context: inout GraphicsContext,
-        meterRect: CGRect
-    ) {
-        let visibleRangeMilliseconds = UInt64(historyRange.rawValue * 1_000.0)
-        guard visibleRangeMilliseconds > 0 else {
-            return
-        }
-
-        for mark in marks {
-            guard latestHostTime >= mark else {
-                continue
-            }
-
-            let age = latestHostTime - mark
-            guard age <= visibleRangeMilliseconds else {
-                continue
-            }
-
-            let progress = CGFloat(age) / CGFloat(visibleRangeMilliseconds)
-            let centerX = meterRect.maxX - (progress * meterRect.width)
-            let rect = CGRect(
-                x: centerX - (LevelDesignTokens.resetMarkSize.width / 2),
-                y: meterRect.minY + 8,
-                width: LevelDesignTokens.resetMarkSize.width,
-                height: min(LevelDesignTokens.resetMarkSize.height, meterRect.height - 8)
-            )
-
-            context.fill(
-                Path(roundedRect: rect, cornerRadius: LevelDesignTokens.resetMarkSize.width / 2),
-                with: .color(LevelDesignTokens.resetGeneral.withOpacity(0.78).color)
-            )
-        }
+        context.setStrokeColor(channel.borderColor.cgColor)
+        context.setLineWidth(LevelDesignTokens.borderWidth)
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.addPath(borderPath)
+        context.strokePath()
     }
 
     private static func drawScale(
-        in context: inout GraphicsContext,
+        in context: CGContext,
         meterRect: CGRect
     ) {
-        for band in scaleBands {
-            let rawY = yPosition(for: band.db, in: meterRect)
+        for band in LevelScaleGuide.bands {
+            let rawY = LevelScaleGuide.yPosition(for: band.db, in: meterRect)
             let y = floor(rawY) + 0.5
-            var path = Path()
+            let path = CGMutablePath()
             path.move(to: CGPoint(x: meterRect.minX, y: y))
             path.addLine(to: CGPoint(x: meterRect.maxX, y: y))
 
-            let color = band.db == -12
-                ? LevelDesignTokens.scaleAccent.color
-                : LevelDesignTokens.meterScaleLine.color
-
-            context.stroke(
-                path,
-                with: .color(color),
-                lineWidth: LevelDesignTokens.scaleLineWidth
-            )
+            // All scale bands are the subtle guide colour. The accent now belongs
+            // exclusively to the target reference line (drawTargetLine), which is
+            // bound to the lane's target level and may sit at any dB.
+            context.setStrokeColor(LevelDesignTokens.meterScaleLine.cgColor)
+            context.setLineWidth(LevelDesignTokens.scaleLineWidth)
+            context.addPath(path)
+            context.strokePath()
         }
     }
 
-    private static func drawLabels(
-        in context: inout GraphicsContext,
+    /// Dashed reference line at the lane's target level. Bound to the sidebar
+    /// `Target level` control, so it tracks changes in real time.
+    private static func drawTargetLine(
+        targetDB: CGFloat,
+        in context: CGContext,
         meterRect: CGRect
     ) {
-        let labelX = meterRect.minX - LevelDesignTokens.labelGap
+        let rawY = LevelScaleGuide.yPosition(for: targetDB, in: meterRect)
+        let y = floor(rawY) + 0.5
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: meterRect.minX, y: y))
+        path.addLine(to: CGPoint(x: meterRect.maxX, y: y))
 
-        for band in scaleBands {
-            let y = yPosition(for: band.db, in: meterRect)
-            let color = band.db == -12
-                ? LevelDesignTokens.scaleAccent.color
-                : LevelDesignTokens.textTertiary.color
-
-            let label = Text(band.label)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(color)
-
-            context.draw(
-                label,
-                at: CGPoint(x: labelX, y: y),
-                anchor: .trailing
-            )
-        }
+        context.saveGState()
+        context.setStrokeColor(LevelDesignTokens.scaleAccent.cgColor)
+        context.setLineWidth(LevelDesignTokens.scaleLineWidth * 2)
+        context.setLineDash(phase: 0, lengths: [3, 3])
+        context.addPath(path)
+        context.strokePath()
+        context.restoreGState()
     }
 
-    private static func rangeEnvelopePath(
-        upperPoints: [CGPoint],
-        lowerPoints: [CGPoint]
-    ) -> Path? {
-        guard
-            let firstUpper = upperPoints.first,
-            upperPoints.count == lowerPoints.count
-        else {
-            return nil
-        }
-
-        var path = Path()
-        path.move(to: firstUpper)
-        path.addLines(Array(upperPoints.dropFirst()))
-        path.addLines(Array(lowerPoints.reversed()))
-        path.closeSubpath()
-        return path
-    }
-
-    private static func yPosition(
-        for db: CGFloat,
-        in rect: CGRect
-    ) -> CGFloat {
-        let clamped = min(max(db, LevelDecibelScale.floorDB), LevelDecibelScale.ceilingDB)
-        let progress = (LevelDecibelScale.ceilingDB - clamped) / LevelDecibelScale.visibleRange
-        return rect.minY + (progress * rect.height)
-    }
 }
 
 enum LevelMassGeometry {
@@ -461,7 +436,13 @@ enum LevelMassGeometry {
             )
         }
 
-        if !isEquivalent(points.last, currentPoint) {
+        if let last = points.last, abs(last.x - currentPoint.x) < 0.5 {
+            // The right edge must always represent the live RMS point. Replacing
+            // the last history sample avoids a vertical border spike at maxX and
+            // keeps the visible edge locked to the current reading instead of the
+            // latest history bucket mean.
+            points[points.count - 1] = currentPoint
+        } else if !isEquivalent(points.last, currentPoint) {
             points.append(currentPoint)
         }
 
@@ -566,7 +547,7 @@ enum LevelMassGeometry {
     }
 }
 
-private final class LevelPresentationPipeline {
+final class LevelPresentationPipeline {
     private enum SemanticState {
         case inTarget
         case outOfTarget
@@ -588,12 +569,12 @@ private final class LevelPresentationPipeline {
     func makeFrame(
         layout: LevelRenderFrame.Layout,
         inputs: [LevelLaneInput],
-        generalResetMarks: [UInt64],
         timestamp: TimeInterval
     ) -> LevelRenderFrame {
         let lanes = inputs.map { input in
             LevelRenderFrame.Lane(
                 lane: input.lane,
+                name: input.name,
                 targetDB: input.targetDB,
                 historyRange: input.history.range,
                 latestHostTime: input.latestHostTime,
@@ -603,6 +584,7 @@ private final class LevelPresentationPipeline {
                     lane: input.lane,
                     side: .left,
                     targetDB: input.targetDB,
+                    targetMarginDB: input.targetMarginDB,
                     timestamp: timestamp
                 ),
                 right: resolveChannel(
@@ -611,6 +593,7 @@ private final class LevelPresentationPipeline {
                     lane: input.lane,
                     side: .right,
                     targetDB: input.targetDB,
+                    targetMarginDB: input.targetMarginDB,
                     timestamp: timestamp
                 )
             )
@@ -618,8 +601,7 @@ private final class LevelPresentationPipeline {
 
         return LevelRenderFrame(
             layout: layout,
-            lanes: lanes,
-            generalResetMarks: generalResetMarks
+            lanes: lanes
         )
     }
 
@@ -629,6 +611,7 @@ private final class LevelPresentationPipeline {
         lane: LaneID,
         side: LevelChannelSide,
         targetDB: CGFloat,
+        targetMarginDB: CGFloat,
         timestamp: TimeInterval
     ) -> LevelRenderFrame.Lane.Channel {
         let currentAmplitude = side == .left ? currentSample.rmsLeft : currentSample.rmsRight
@@ -638,6 +621,7 @@ private final class LevelPresentationPipeline {
         let semanticState = semanticState(
             currentDB: currentDB,
             targetDB: targetDB,
+            targetMarginDB: targetMarginDB,
             previous: borderStates[key]?.semanticState
         )
 
@@ -688,16 +672,19 @@ private final class LevelPresentationPipeline {
     private func semanticState(
         currentDB: CGFloat,
         targetDB: CGFloat,
+        targetMarginDB: CGFloat,
         previous: SemanticState?
     ) -> SemanticState {
         let distance = abs(currentDB - targetDB)
-        let currentState = previous ?? (distance > LevelDesignTokens.targetMarginDB ? .outOfTarget : .inTarget)
+        let hysteresis = min(LevelDesignTokens.targetHysteresisDB, targetMarginDB * 0.5)
+        let reentryMargin = max(targetMarginDB - hysteresis, 0)
+        let currentState = previous ?? (distance > targetMarginDB ? .outOfTarget : .inTarget)
 
         switch currentState {
         case .inTarget:
-            return distance > LevelDesignTokens.targetMarginDB ? .outOfTarget : .inTarget
+            return distance > targetMarginDB ? .outOfTarget : .inTarget
         case .outOfTarget:
-            return distance < (LevelDesignTokens.targetMarginDB - LevelDesignTokens.targetHysteresisDB)
+            return distance < reentryMargin
                 ? .inTarget
                 : .outOfTarget
         }
@@ -707,24 +694,30 @@ private final class LevelPresentationPipeline {
         currentSample: LaneDynamicsSample,
         side: LevelChannelSide
     ) -> Bool {
-        switch side {
-        case .left:
-            return currentSample.clipLeft
-        case .right:
-            return currentSample.clipRight
-        }
+        let detectorClip = side == .left ? currentSample.clipLeft : currentSample.clipRight
+
+        // Live's post-fader output meter clamps at 1.0 (0 dBFS), so a true
+        // >0 dBFS overload can't be observed there. Treat a level pinned at the
+        // ceiling as clipping — that is exactly what reads as "in the red" on the
+        // Ableton track meter, and turns the mass into the level-clip colour.
+        let amplitude = side == .left ? currentSample.peakLeft : currentSample.peakRight
+        let atCeiling = LevelDecibelScale.displayDBFS(for: amplitude) >= LevelDecibelScale.ceilingDB - 0.1
+
+        return detectorClip || atCeiling
     }
 }
 
-private struct LevelLaneInput {
+struct LevelLaneInput {
     let lane: LaneID
+    let name: String
     let targetDB: CGFloat
+    let targetMarginDB: CGFloat
     let currentSample: LaneDynamicsSample
     let history: LaneHistorySnapshot
     let latestHostTime: UInt64
 }
 
-private enum LevelChannelSide {
+enum LevelChannelSide {
     case left
     case right
 }
@@ -742,6 +735,7 @@ private struct LevelLaneProfile {
 private struct LevelLaneSettings {
     let lane: LaneID
     let targetDB: CGFloat
+    let targetMarginDB: CGFloat
     let historyRange: HistoryRange
     let baseDB: Double
     let slowSwingDB: Double
@@ -759,14 +753,12 @@ struct LevelPreviewSnapshot {
 
 final class LevelPreviewDriver {
     private var historyBuffer: any HistoryBuffer = DynamicsCoreFactory.makeHistoryBuffer()
-    private var resetDetector: any ResetDetector = TimeDomainFactory.makeResetDetector()
     private var clipDetectors: [any ClipDetector] = LaneID.allCases.map { _ in
         DynamicsCoreFactory.makeClipDetector()
     }
     private var statusMachines = LevelPreviewDriver.makeStatusMachines()
     private let presentationPipeline = LevelPresentationPipeline()
     private let historyStepMilliseconds: UInt64 = 100
-    private let resetStepMilliseconds: UInt64 = 500
     private let seedDurationMilliseconds: UInt64 = UInt64(HistoryRange.twoMinutes.rawValue * 1_000.0)
     private let showcaseStartDate = Date()
     private let showcaseSplitConfigurations: [LevelLaneConfiguration] = [
@@ -808,28 +800,19 @@ final class LevelPreviewDriver {
     )
 
     private var historyCursorMilliseconds: UInt64 = 0
-    private var resetCursorMilliseconds: UInt64 = 0
-    private var previousResetStates: [CycleState]
-    private var generalResetMarks: [UInt64] = []
 
     init() {
-        previousResetStates = Self.syntheticCycleStates(at: 0)
         reset()
     }
 
     func reset() {
         historyBuffer = DynamicsCoreFactory.makeHistoryBuffer()
-        resetDetector = TimeDomainFactory.makeResetDetector()
         clipDetectors = LaneID.allCases.map { _ in
             DynamicsCoreFactory.makeClipDetector()
         }
         statusMachines = Self.makeStatusMachines()
         historyCursorMilliseconds = 0
-        resetCursorMilliseconds = 0
-        previousResetStates = Self.syntheticCycleStates(at: 0)
-        generalResetMarks = []
         seedHistory()
-        seedResetMarks()
     }
 
     func snapshot(
@@ -881,30 +864,10 @@ final class LevelPreviewDriver {
         }
     }
 
-    private func seedResetMarks() {
-        while resetCursorMilliseconds + resetStepMilliseconds <= seedDurationMilliseconds {
-            let next = resetCursorMilliseconds + resetStepMilliseconds
-            recordResetMarks(at: next)
-            resetCursorMilliseconds = next
-        }
-    }
-
     private func advanceHistory(to targetMilliseconds: UInt64) {
         while historyCursorMilliseconds + historyStepMilliseconds <= targetMilliseconds {
             historyCursorMilliseconds += historyStepMilliseconds
             appendHistorySample(at: historyCursorMilliseconds)
-        }
-    }
-
-    private func advanceResetMarks(to targetMilliseconds: UInt64) {
-        while resetCursorMilliseconds + resetStepMilliseconds <= targetMilliseconds {
-            let next = resetCursorMilliseconds + resetStepMilliseconds
-            recordResetMarks(at: next)
-            resetCursorMilliseconds = next
-        }
-
-        generalResetMarks.removeAll { mark in
-            targetMilliseconds > mark && (targetMilliseconds - mark) > seedDurationMilliseconds
         }
     }
 
@@ -925,7 +888,6 @@ final class LevelPreviewDriver {
         }
 
         advanceHistory(to: playheadMilliseconds)
-        advanceResetMarks(to: playheadMilliseconds)
         return syntheticDisplaySample(at: playheadMilliseconds)
     }
 
@@ -974,13 +936,11 @@ final class LevelPreviewDriver {
             expanded: presentationPipeline.makeFrame(
                 layout: .singleExpanded,
                 inputs: expandedInputs,
-                generalResetMarks: generalResetMarks,
                 timestamp: timestamp
             ),
             split: presentationPipeline.makeFrame(
                 layout: .fourWindows,
                 inputs: splitInputs,
-                generalResetMarks: generalResetMarks,
                 timestamp: timestamp
             )
         )
@@ -1003,6 +963,7 @@ final class LevelPreviewDriver {
                     isEnabled: false,
                     name: "",
                     targetLevelDB: SettingsDefaults.defaultTargetLevelDB,
+                    targetMarginDB: SettingsDefaults.defaultTargetMarginDB,
                     historyRange: SettingsDefaults.defaultHistoryRange
                 )
             var machine = statusMachines[lane]
@@ -1030,7 +991,9 @@ final class LevelPreviewDriver {
     ) -> LevelLaneInput {
         LevelLaneInput(
             lane: settings.lane,
+            name: Self.channelLabel(for: settings.lane),
             targetDB: settings.targetDB,
+            targetMarginDB: settings.targetMarginDB,
             currentSample: laneSample(from: sample, lane: settings.lane),
             history: historyBuffer.snapshot(
                 for: settings.lane,
@@ -1039,20 +1002,6 @@ final class LevelPreviewDriver {
             ),
             latestHostTime: sample.hostTime
         )
-    }
-
-    private func recordResetMarks(at milliseconds: UInt64) {
-        let currentStates = Self.syntheticCycleStates(at: milliseconds)
-        let resetStates = resetDetector.detectResets(
-            previous: previousResetStates,
-            current: currentStates
-        )
-
-        if resetStates.contains(where: { $0.mark == .general }) {
-            generalResetMarks.append(milliseconds)
-        }
-
-        previousResetStates = currentStates
     }
 
     private func makeDynamicsSample(
@@ -1166,6 +1115,7 @@ final class LevelPreviewDriver {
         return LevelLaneSettings(
             lane: configuration.lane,
             targetDB: CGFloat(configuration.targetLevelDB),
+            targetMarginDB: CGFloat(configuration.targetMarginDB),
             historyRange: configuration.historyRange,
             baseDB: profile.baseDB,
             slowSwingDB: profile.slowSwingDB,
@@ -1174,26 +1124,6 @@ final class LevelPreviewDriver {
             clipPeriodMilliseconds: profile.clipPeriodMilliseconds,
             clipChannel: profile.clipChannel
         )
-    }
-
-    private static func syntheticCycleStates(at milliseconds: UInt64) -> [CycleState] {
-        let stepDurationMilliseconds: UInt64 = 500
-        let absoluteStep = Int(milliseconds / stepDurationMilliseconds)
-        let currentStep = absoluteStep % StepNumber.sixteen.rawValue
-        let cycleIteration = absoluteStep / StepNumber.sixteen.rawValue
-
-        return CycleSlot.allCases.map { slot in
-            CycleState(
-                config: CycleConfig(
-                    slot: slot,
-                    stepNumber: .sixteen,
-                    pulse: .oneQuarter
-                ),
-                currentStep: currentStep,
-                cycleIteration: cycleIteration,
-                anticipationRange: 12..<16
-            )
-        }
     }
 
     private func laneSample(
@@ -1307,7 +1237,7 @@ struct LevelRendererShowcase: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Single Expanded")
                             .font(.headline)
-                        Text("One full-width lane using a 30 s history viewport, reset marks, and per-channel target feedback.")
+                        Text("One full-width lane using a 30 s history viewport and per-channel target feedback.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         LevelRenderer(frame: frames.expanded)
@@ -1392,6 +1322,13 @@ struct LevelResolvedColor: Sendable, Equatable {
         )
     }
 
+    var cgColor: CGColor {
+        CGColor(
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+            components: [red, green, blue, opacity]
+        )!
+    }
+
     func withOpacity(_ value: CGFloat) -> LevelResolvedColor {
         LevelResolvedColor(
             red: Int((red * 255.0).rounded()),
@@ -1422,26 +1359,27 @@ private enum LevelDesignTokens {
     static let meterBackground = LevelResolvedColor(red: 22, green: 23, blue: 26)
     static let meterScaleLine = LevelResolvedColor(red: 47, green: 50, blue: 56)
     static let scaleAccent = LevelResolvedColor(red: 67, green: 120, blue: 184)
+    static let textSecondary = LevelResolvedColor(red: 174, green: 184, blue: 196)
     static let textTertiary = LevelResolvedColor(red: 135, green: 146, blue: 160)
     static let inTarget = LevelResolvedColor(red: 67, green: 185, blue: 115)
     static let outTarget = LevelResolvedColor(red: 202, green: 82, blue: 86)
-    static let clip = LevelResolvedColor(red: 54, green: 23, blue: 24, opacity: 0.92)
-    static let resetGeneral = LevelResolvedColor(red: 170, green: 130, blue: 219)
+    // `color/kairos/level-clip` → `primitive/color/red/200` (#361718), solid.
+    static let clip = LevelResolvedColor(red: 54, green: 23, blue: 24)
 
-    // Figma exposes the semantic token name via MCP search, but none of the anchored
-    // Level nodes bind it directly. This fallback keeps the mass neutral until the
-    // token value becomes addressable through a bound node.
-    static let meterFillBody = LevelResolvedColor(red: 61, green: 65, blue: 72, opacity: 0.88)
+    // `color/kairos/meter-fill-body` → neutral-200 (#24262B), drawn solid.
+    static let meterFillBody = LevelResolvedColor(red: 36, green: 38, blue: 43)
 
     static let radiusCanvas: CGFloat = 12
     static let panelPadding: CGFloat = 16
+    static let titleTopPadding: CGFloat = 8
+    static let titleHeight: CGFloat = 20
+    static let titleGap: CGFloat = 8
+    static let titleStackHeight: CGFloat = titleTopPadding + titleHeight + titleGap
     static let labelWidth: CGFloat = 32
     static let labelGap: CGFloat = 24
     static let windowGap: CGFloat = 8
     static let scaleLineWidth: CGFloat = 1
     static let borderWidth: CGFloat = 2
-    static let resetMarkSize = CGSize(width: 8, height: 32)
-    static let targetMarginDB: CGFloat = 6
     static let targetHysteresisDB: CGFloat = 1.5
     static let targetCrossfadeDuration: TimeInterval = 0.2
     static let expandedColumnCount = 240

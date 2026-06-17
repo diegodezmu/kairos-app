@@ -2,22 +2,22 @@ import Foundation
 
 private struct TimedDynamicsSample {
     var sample: DynamicsSample
-    var timelineSeconds: Double
+    var timelineMilliseconds: UInt64
 }
 
 final class DefaultHistoryBuffer: HistoryBuffer, @unchecked Sendable {
-    private let maximumRangeSeconds: Double
+    private let maximumRangeMilliseconds: UInt64
     private var samples: [TimedDynamicsSample] = []
 
     init(maximumRange: HistoryRange = .twoMinutes) {
-        self.maximumRangeSeconds = maximumRange.rawValue
+        self.maximumRangeMilliseconds = UInt64(maximumRange.rawValue * 1_000.0)
     }
 
     func append(_ sample: DynamicsSample) {
         samples.append(
             TimedDynamicsSample(
                 sample: sample,
-                timelineSeconds: dynamicsTimelineSeconds(for: sample)
+                timelineMilliseconds: dynamicsTimelineMilliseconds(for: sample)
             )
         )
         pruneIfNeeded()
@@ -32,28 +32,39 @@ final class DefaultHistoryBuffer: HistoryBuffer, @unchecked Sendable {
             return LaneHistorySnapshot(lane: lane, range: range, buckets: [])
         }
 
-        let oldestIncludedSecond = latest.timelineSeconds - range.rawValue
-        let selectedSamples = samples.filter {
-            $0.timelineSeconds >= oldestIncludedSecond && $0.timelineSeconds <= latest.timelineSeconds
-        }
+        let rangeMilliseconds = UInt64(range.rawValue * 1_000.0)
+        let oldestIncludedMilliseconds = latest.timelineMilliseconds > rangeMilliseconds
+            ? latest.timelineMilliseconds - rangeMilliseconds
+            : 0
 
-        guard !selectedSamples.isEmpty else {
+        let bucketWidthMilliseconds = Double(rangeMilliseconds) / Double(columnCount)
+        guard bucketWidthMilliseconds > 0 else {
             return LaneHistorySnapshot(lane: lane, range: range, buckets: [])
         }
 
-        let bucketWidthSeconds = range.rawValue / Double(columnCount)
-        var columns = Array(repeating: [TimedDynamicsSample](), count: columnCount)
+        // Group by an absolute time grid so a closed bucket keeps its recorded
+        // shape while it scrolls left across the panel.
+        var columns: [Int: [TimedDynamicsSample]] = [:]
 
-        for entry in selectedSamples {
-            let offsetSeconds = entry.timelineSeconds - oldestIncludedSecond
-            let normalizedOffset = bucketWidthSeconds > 0 ? offsetSeconds / bucketWidthSeconds : 0
-            let rawIndex = Int(normalizedOffset)
-            let clampedIndex = min(max(rawIndex, 0), columnCount - 1)
-            columns[clampedIndex].append(entry)
+        for entry in samples {
+            let index = bucketIndex(
+                for: entry.timelineMilliseconds,
+                bucketWidthMilliseconds: bucketWidthMilliseconds
+            )
+            columns[index, default: []].append(entry)
         }
 
-        let buckets = columns.compactMap { entries in
-            aggregate(entries: entries, lane: lane)
+        let buckets: [LaneHistoryBucket] = columns.keys.sorted().compactMap { index -> LaneHistoryBucket? in
+            guard bucketIntersectsVisibleWindow(
+                index: index,
+                oldestIncludedMilliseconds: oldestIncludedMilliseconds,
+                latestMilliseconds: latest.timelineMilliseconds,
+                bucketWidthMilliseconds: bucketWidthMilliseconds
+            ), let entries = columns[index] else {
+                return nil
+            }
+
+            return aggregate(entries: entries, lane: lane)
         }
 
         return LaneHistorySnapshot(
@@ -61,6 +72,29 @@ final class DefaultHistoryBuffer: HistoryBuffer, @unchecked Sendable {
             range: range,
             buckets: buckets
         )
+    }
+
+    private func bucketIndex(
+        for timelineMilliseconds: UInt64,
+        bucketWidthMilliseconds: Double
+    ) -> Int {
+        let adjustedMilliseconds = timelineMilliseconds == 0
+            ? 0
+            : timelineMilliseconds - 1
+        return Int(floor(Double(adjustedMilliseconds) / bucketWidthMilliseconds))
+    }
+
+    private func bucketIntersectsVisibleWindow(
+        index: Int,
+        oldestIncludedMilliseconds: UInt64,
+        latestMilliseconds: UInt64,
+        bucketWidthMilliseconds: Double
+    ) -> Bool {
+        let bucketStartMilliseconds = Double(index) * bucketWidthMilliseconds
+        let bucketEndMilliseconds = bucketStartMilliseconds + bucketWidthMilliseconds
+
+        return bucketEndMilliseconds >= Double(oldestIncludedMilliseconds)
+            && bucketStartMilliseconds <= Double(latestMilliseconds)
     }
 
     private func aggregate(
@@ -106,8 +140,12 @@ final class DefaultHistoryBuffer: HistoryBuffer, @unchecked Sendable {
             return
         }
 
-        let oldestRetainedSecond = latest.timelineSeconds - maximumRangeSeconds
-        let firstRetainedIndex = samples.firstIndex { $0.timelineSeconds >= oldestRetainedSecond } ?? samples.endIndex
+        let oldestRetainedMilliseconds = latest.timelineMilliseconds > maximumRangeMilliseconds
+            ? latest.timelineMilliseconds - maximumRangeMilliseconds
+            : 0
+        let firstRetainedIndex = samples.firstIndex {
+            $0.timelineMilliseconds >= oldestRetainedMilliseconds
+        } ?? samples.endIndex
         guard firstRetainedIndex > 0, firstRetainedIndex <= samples.count else {
             return
         }

@@ -118,6 +118,46 @@ final class DynamicsCoreRuntimeTests: XCTestCase {
         XCTAssertEqual(secondBucket.meanRMSRight, 0.2, accuracy: 0.000_1)
     }
 
+    func testHistoryBufferKeepsClosedBucketsStableWhileHistoryScrolls() {
+        let buffer = DefaultHistoryBuffer()
+
+        for second in 0...10 {
+            buffer.append(
+                makeDynamicsSample(
+                    hostTime: UInt64(second * 1_000),
+                    sampleTime: Int64(second),
+                    lane1: makeLaneSample(
+                        rmsLeft: second <= 5 ? 0.1 : 0.9,
+                        rmsRight: 0.2
+                    )
+                )
+            )
+        }
+
+        let initialSnapshot = buffer.snapshot(for: .one, range: .tenSeconds, columnCount: 2)
+        XCTAssertEqual(initialSnapshot.buckets.count, 2)
+        XCTAssertEqual(initialSnapshot.buckets[0].meanRMSLeft, 0.1, accuracy: 0.000_1)
+        XCTAssertEqual(initialSnapshot.buckets[1].meanRMSLeft, 0.9, accuracy: 0.000_1)
+
+        for second in 11...12 {
+            buffer.append(
+                makeDynamicsSample(
+                    hostTime: UInt64(second * 1_000),
+                    sampleTime: Int64(second),
+                    lane1: makeLaneSample(rmsLeft: 0.9, rmsRight: 0.2)
+                )
+            )
+        }
+
+        let scrolledSnapshot = buffer.snapshot(for: .one, range: .tenSeconds, columnCount: 2)
+        XCTAssertEqual(scrolledSnapshot.buckets.count, 3)
+        XCTAssertEqual(scrolledSnapshot.buckets[0].startHostTime, 0)
+        XCTAssertEqual(scrolledSnapshot.buckets[0].endHostTime, 5_000)
+        XCTAssertEqual(scrolledSnapshot.buckets[0].meanRMSLeft, 0.1, accuracy: 0.000_1)
+        XCTAssertEqual(scrolledSnapshot.buckets[1].meanRMSLeft, 0.9, accuracy: 0.000_1)
+        XCTAssertEqual(scrolledSnapshot.buckets[2].meanRMSLeft, 0.9, accuracy: 0.000_1)
+    }
+
     func testHistoryBufferRespectsAllContractRanges() {
         let buffer = DefaultHistoryBuffer()
 

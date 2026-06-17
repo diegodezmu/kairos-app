@@ -7,9 +7,7 @@ import KairosCore
 final class SettingsModel {
     var activePresetSlot: PresetSlot
     var syncSource: SyncSource
-    var selectedMIDIPortID: String?
-    var availableMIDIPorts: [MIDIPortOption]
-    var midiClockStatus: MIDIClockStatus
+    var usbMIDISource: USBMIDISourcePreference
     var linkStatus: LinkStatus
     var bpm: Int {
         didSet {
@@ -51,16 +49,11 @@ final class SettingsModel {
     init(
         activePresetSlot: PresetSlot = .defaultPreset,
         preset: SettingsPreset = .factoryDefault,
-        selectedMIDIPortID: String? = nil,
-        availableMIDIPorts: [MIDIPortOption] = [],
-        midiClockStatus: MIDIClockStatus = .idle,
         linkStatus: LinkStatus = .off
     ) {
         self.activePresetSlot = activePresetSlot
         self.syncSource = preset.syncSource
-        self.selectedMIDIPortID = selectedMIDIPortID
-        self.availableMIDIPorts = availableMIDIPorts
-        self.midiClockStatus = midiClockStatus
+        self.usbMIDISource = preset.usbMIDISource
         self.linkStatus = linkStatus
         self.bpm = preset.bpm
         self.isMetronomeEnabled = preset.isMetronomeEnabled
@@ -75,6 +68,7 @@ final class SettingsModel {
     var preset: SettingsPreset {
         SettingsPreset(
             syncSource: syncSource,
+            usbMIDISource: usbMIDISource,
             bpm: bpm,
             isMetronomeEnabled: isMetronomeEnabled,
             metronomePulse: metronomePulse,
@@ -95,6 +89,7 @@ final class SettingsModel {
         }
 
         syncSource = preset.syncSource
+        usbMIDISource = preset.usbMIDISource
         bpm = preset.bpm
         isMetronomeEnabled = preset.isMetronomeEnabled
         metronomePulse = preset.metronomePulse

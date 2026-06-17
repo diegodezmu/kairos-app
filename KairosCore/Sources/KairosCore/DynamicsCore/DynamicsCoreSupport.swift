@@ -95,6 +95,17 @@ func dynamicsTimelineSeconds(for sample: DynamicsSample) -> Double {
     return Double(sample.sampleTime) / sample.sampleRate
 }
 
+func dynamicsTimelineMilliseconds(for sample: DynamicsSample) -> UInt64 {
+    guard sample.sampleRate > 0 else {
+        return sample.hostTime
+    }
+
+    return dynamicsTimelineMilliseconds(
+        sampleTime: sample.sampleTime,
+        sampleRate: sample.sampleRate
+    )
+}
+
 func dynamicsTimelineMilliseconds(sampleTime: Int64, sampleRate: Double) -> UInt64 {
     guard sampleRate > 0 else {
         return 0

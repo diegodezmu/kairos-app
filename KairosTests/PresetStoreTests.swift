@@ -1,3 +1,4 @@
+import CoreAudio
 import SwiftUI
 import XCTest
 import KairosCore
@@ -355,10 +356,12 @@ final class PresetStoreTests: XCTestCase {
 
         XCTAssertEqual(contour.first?.x, meterRect.minX)
         XCTAssertEqual(contour[0].y, contour[1].y)
-        XCTAssertEqual(contour[1].y, contour[2].y)
         XCTAssertGreaterThan(contour[1].x, meterRect.minX)
-        XCTAssertEqual(contour[contour.count - 2].x, meterRect.maxX)
         XCTAssertEqual(contour.last?.x, meterRect.maxX)
+        XCTAssertEqual(
+            contour.last?.y,
+            contourYPosition(for: -9, in: meterRect)
+        )
         XCTAssertEqual(
             segments.first,
             [
@@ -368,7 +371,8 @@ final class PresetStoreTests: XCTestCase {
                 CGPoint(x: contour[1].x, y: meterRect.maxY),
             ]
         )
-        XCTAssertEqual(segments.last?.first?.x, meterRect.maxX)
+        XCTAssertEqual(segments.last?[1].x, contour[1].x)
+        XCTAssertEqual(segments.last?[2].x, meterRect.maxX)
         XCTAssertEqual(segments.last?.last?.x, meterRect.maxX)
     }
 
@@ -413,9 +417,11 @@ final class PresetStoreTests: XCTestCase {
         XCTAssertEqual(contour.first?.x, meterRect.minX)
         XCTAssertEqual(contour[0].y, contour[1].y)
         XCTAssertGreaterThan(contour[1].x, meterRect.minX)
-        XCTAssertEqual(contour[contour.count - 2].x, meterRect.maxX)
         XCTAssertEqual(contour.last?.x, meterRect.maxX)
-        XCTAssertGreaterThan(contour.last!.y, contour[contour.count - 2].y)
+        XCTAssertEqual(
+            contour.last?.y,
+            contourYPosition(for: -22, in: meterRect)
+        )
         XCTAssertEqual(segments.first?.first, CGPoint(x: meterRect.minX, y: meterRect.maxY))
         XCTAssertEqual(segments.last?.last, CGPoint(x: meterRect.maxX, y: meterRect.maxY))
         XCTAssertTrue(
@@ -424,6 +430,35 @@ final class PresetStoreTests: XCTestCase {
                 segment[0].x == segment[1].x &&
                 segment[2].x == segment[3].x
             }
+        )
+    }
+
+    func testLevelMassContourUsesCurrentPointAtRightEdgeWithoutVerticalSpike() {
+        let meterRect = CGRect(x: 24, y: 16, width: 240, height: 120)
+        let latestHostTime: UInt64 = 30_000
+        let contour = LevelMassGeometry.contourPoints(
+            for: [
+                makeLevelColumn(
+                    startHostTime: 28_900,
+                    endHostTime: latestHostTime,
+                    minimumDB: -18,
+                    maximumDB: -18,
+                    meanDB: -18
+                ),
+            ],
+            currentDB: -50,
+            latestHostTime: latestHostTime,
+            historyRange: .thirtySeconds,
+            in: meterRect,
+            value: \.meanDB
+        )
+
+        XCTAssertEqual(contour.last?.x, meterRect.maxX)
+        XCTAssertEqual(contour.last?.y, contourYPosition(for: -50, in: meterRect))
+        XCTAssertEqual(
+            contour.filter { abs($0.x - meterRect.maxX) < 0.5 }.count,
+            1,
+            "The live edge should be represented by a single point at maxX."
         )
     }
 
@@ -535,12 +570,12 @@ final class PresetStoreTests: XCTestCase {
         let clock = MutableDateClock(now: renderedDate)
         let model = makeModel(clock: clock)
 
-        _ = model.snapshot(at: renderedDate)
+        _ = model.workspaceSnapshot(at: renderedDate)
 
         clock.now = playDate
         model.togglePlay()
 
-        let snapshot = model.snapshot(at: playDate)
+        let snapshot = model.workspaceSnapshot(at: playDate)
         XCTAssertEqual(snapshot.gridFrame.cycles.first?.activeStepIndex, 0)
     }
 
@@ -553,27 +588,40 @@ final class PresetStoreTests: XCTestCase {
 
         model.togglePlay()
 
-        let advancedSnapshot = model.snapshot(at: advancedDate)
+        let advancedSnapshot = model.workspaceSnapshot(at: advancedDate)
         XCTAssertEqual(advancedSnapshot.gridFrame.cycles.first?.activeStepIndex, 2)
 
         clock.now = advancedDate
         model.resetPreview()
 
-        let resetSnapshot = model.snapshot(at: advancedDate)
+        let resetSnapshot = model.workspaceSnapshot(at: advancedDate)
         XCTAssertEqual(resetSnapshot.gridFrame.cycles.first?.activeStepIndex, 0)
 
         let resumedDate = advancedDate.addingTimeInterval(0.5)
-        let resumedSnapshot = model.snapshot(at: resumedDate)
+        let resumedSnapshot = model.workspaceSnapshot(at: resumedDate)
         XCTAssertEqual(resumedSnapshot.gridFrame.cycles.first?.activeStepIndex, 1)
     }
 
     private func makePreset(seed: Int) -> SettingsPreset {
         let syncSources: [SyncSource] = [
             .internalClock,
-            .midiClock,
+            .link,
+            .usb,
             .link,
             .internalClock,
-            .link,
+        ]
+        let usbMIDISources: [USBMIDISourcePreference] = [
+            .none,
+            .none,
+            USBMIDISourcePreference(
+                uniqueID: 7302,
+                displayName: "USB Clock Device"
+            ),
+            .none,
+            USBMIDISourcePreference(
+                uniqueID: 8821,
+                displayName: "Rack Sync"
+            ),
         ]
         let metronomePulses: [Pulse] = [
             .oneSixteenth,
@@ -589,6 +637,7 @@ final class PresetStoreTests: XCTestCase {
 
         return SettingsPreset(
             syncSource: syncSources[seed],
+            usbMIDISource: usbMIDISources[seed],
             bpm: 92 + (seed * 47),
             isMetronomeEnabled: seed.isMultiple(of: 2),
             metronomePulse: metronomePulses[seed],
@@ -611,6 +660,7 @@ final class PresetStoreTests: XCTestCase {
                     isEnabled: !(seed + laneIndex).isMultiple(of: 2),
                     name: "Preset \(seed) Source \(lane.rawValue)",
                     targetLevelDB: Double(-12 - (seed * 2) - laneIndex),
+                    targetMarginDB: Double(2 + ((seed + laneIndex) % 23)),
                     historyRange: historyRanges[(seed + laneIndex) % historyRanges.count]
                 )
             }
@@ -658,6 +708,162 @@ final class PresetStoreTests: XCTestCase {
         XCTAssertTrue(library.presets.allSatisfy { $0.settings.isMetronomeEnabled == false })
     }
 
+    func testLegacyMidiSyncSourceDecodesAsInternalClock() throws {
+        let data = Data(#""midiClock""#.utf8)
+        let decoded = try JSONDecoder().decode(SyncSourceDTO.self, from: data)
+
+        XCTAssertEqual(decoded, .internalClock)
+        XCTAssertEqual(decoded.domainModel, .internalClock)
+    }
+
+    func testUSBSyncSourceDecodesAndMapsBackToDomain() throws {
+        let data = Data(#""usb""#.utf8)
+        let decoded = try JSONDecoder().decode(SyncSourceDTO.self, from: data)
+
+        XCTAssertEqual(decoded, .usb)
+        XCTAssertEqual(decoded.domainModel, .usb)
+    }
+
+    func testLegacyPresetPayloadDefaultsUSBMIDISourceToNone() throws {
+        let seededLibrary = PresetLibrary(
+            presets: PresetSlot.allCases.map { slot in
+                StoredPreset(
+                    slot: slot,
+                    settings: SettingsPreset(
+                        syncSource: .usb,
+                        usbMIDISource: USBMIDISourcePreference(
+                            uniqueID: 99,
+                            displayName: "Master Clock"
+                        ),
+                        bpm: 120,
+                        isMetronomeEnabled: false,
+                        metronomePulse: .oneQuarter,
+                        offset: Offset(milliseconds: 0),
+                        isGridVisible: true,
+                        isLevelVisible: true,
+                        gridCycles: CycleSlot.allCases.map { SettingsDefaults.defaultGridCycle(for: $0) },
+                        levelLanes: LaneID.allCases.map { SettingsDefaults.defaultLevelLane(for: $0) }
+                    )
+                )
+            }
+        )
+        let data = try JSONEncoder().encode(PresetLibraryDTO(library: seededLibrary))
+        var jsonObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var presets = try XCTUnwrap(jsonObject["presets"] as? [[String: Any]])
+
+        for index in presets.indices {
+            var preset = presets[index]
+            var settings = try XCTUnwrap(preset["settings"] as? [String: Any])
+            settings.removeValue(forKey: "usbMIDISource")
+            preset["settings"] = settings
+            presets[index] = preset
+        }
+
+        jsonObject["presets"] = presets
+        let legacyData = try JSONSerialization.data(withJSONObject: jsonObject)
+        let dto = try JSONDecoder().decode(PresetLibraryDTO.self, from: legacyData)
+        let library = try dto.domainModel()
+
+        XCTAssertTrue(
+            library.presets.allSatisfy { $0.settings.usbMIDISource == .none }
+        )
+    }
+
+    func testUSBMIDISyncTrackerFollowsStartClockAndStop() {
+        var tracker = USBMIDISyncTracker()
+        let tickIntervalNanos: UInt64 = 20_833_333
+
+        tracker.process(.start, at: hostTime(nanoseconds: 0))
+        for tickIndex in 1 ... 24 {
+            tracker.process(
+                .timingClock,
+                at: hostTime(
+                    nanoseconds: UInt64(tickIndex) * tickIntervalNanos
+                )
+            )
+        }
+
+        let playingSnapshot = tracker.snapshot(
+            at: hostTime(nanoseconds: tickIntervalNanos * 24)
+        )
+        XCTAssertTrue(playingSnapshot.isPlaying)
+        XCTAssertEqual(playingSnapshot.tempoBPM, 120, accuracy: 0.6)
+        XCTAssertEqual(playingSnapshot.beat, 1, accuracy: 0.08)
+
+        tracker.process(
+            .stop,
+            at: hostTime(nanoseconds: tickIntervalNanos * 24)
+        )
+
+        let stoppedSnapshot = tracker.snapshot(
+            at: hostTime(nanoseconds: 2_000_000_000)
+        )
+        XCTAssertFalse(stoppedSnapshot.isPlaying)
+        XCTAssertEqual(stoppedSnapshot.beat, 1, accuracy: 0.08)
+    }
+
+    func testUSBMIDISyncTrackerResumesFromSongPositionPointer() {
+        var tracker = USBMIDISyncTracker()
+        let baseNanos: UInt64 = 1_000_000_000
+        let tickIntervalNanos: UInt64 = 20_833_333
+
+        tracker.process(
+            .songPositionPointer(32),
+            at: hostTime(nanoseconds: baseNanos)
+        )
+        tracker.process(
+            .continuePlayback,
+            at: hostTime(nanoseconds: baseNanos)
+        )
+
+        for tickIndex in 1 ... 12 {
+            tracker.process(
+                .timingClock,
+                at: hostTime(
+                    nanoseconds: baseNanos + (UInt64(tickIndex) * tickIntervalNanos)
+                )
+            )
+        }
+
+        let snapshot = tracker.snapshot(
+            at: hostTime(nanoseconds: baseNanos + (12 * tickIntervalNanos))
+        )
+        XCTAssertTrue(snapshot.isPlaying)
+        XCTAssertTrue(snapshot.hasReceivedMessages)
+        XCTAssertEqual(snapshot.tempoBPM, 120, accuracy: 0.6)
+        XCTAssertEqual(snapshot.beat, 8.5, accuracy: 0.08)
+    }
+
+    func testUSBMIDIRawMessageParserParsesTransportMessages() {
+        var parser = USBMIDIRawMessageParser()
+        var messages: [USBMIDISystemMessage] = []
+
+        parser.parse(bytes: [0xFA, 0xF8, 0xFC]) { message in
+            messages.append(message)
+        }
+
+        XCTAssertEqual(
+            messages,
+            [.start, .timingClock, .stop]
+        )
+    }
+
+    func testUSBMIDIRawMessageParserKeepsSongPositionAcrossRealtimeBytes() {
+        var parser = USBMIDIRawMessageParser()
+        var messages: [USBMIDISystemMessage] = []
+
+        parser.parse(bytes: [0xF2, 0x20, 0xF8, 0x00, 0xFB]) { message in
+            messages.append(message)
+        }
+
+        XCTAssertEqual(
+            messages,
+            [.timingClock, .songPositionPointer(32), .continuePlayback]
+        )
+    }
+
     @MainActor
     private func makeModel(clock: MutableDateClock) -> DesktopShellModel {
         let settings = SettingsModel()
@@ -696,6 +902,10 @@ final class PresetStoreTests: XCTestCase {
                 (cycle.slot, cycle.resetMark)
             }
         )
+    }
+
+    private func hostTime(nanoseconds: UInt64) -> UInt64 {
+        AudioConvertNanosToHostTime(nanoseconds)
     }
 
     @MainActor
@@ -742,14 +952,14 @@ final class PresetStoreTests: XCTestCase {
             lanes: [
                 LevelRenderFrame.Lane(
                     lane: .one,
+                    name: "Canta",
                     targetDB: -12,
                     historyRange: .thirtySeconds,
                     latestHostTime: latestHostTime,
                     left: leftChannel,
                     right: rightChannel
                 ),
-            ],
-            generalResetMarks: []
+            ]
         )
     }
 
@@ -774,9 +984,14 @@ final class PresetStoreTests: XCTestCase {
         height: CGFloat
     ) -> CGRect {
         let canvasRect = CGRect(x: 0, y: 0, width: width, height: height)
-        let contentRect = canvasRect.insetBy(
-            dx: min(16, canvasRect.width / 4),
-            dy: min(16, canvasRect.height / 4)
+        let horizontalInset = min(16, canvasRect.width / 4)
+        let topInset = min(36, canvasRect.height / 3)
+        let bottomInset = min(16, canvasRect.height / 4)
+        let contentRect = CGRect(
+            x: canvasRect.minX + horizontalInset,
+            y: canvasRect.minY + topInset,
+            width: canvasRect.width - (horizontalInset * 2),
+            height: canvasRect.height - topInset - bottomInset
         )
         let meterX = contentRect.minX + 32 + 24
         return CGRect(
@@ -785,6 +1000,15 @@ final class PresetStoreTests: XCTestCase {
             width: contentRect.width - (32 + 24),
             height: contentRect.height
         )
+    }
+
+    private func contourYPosition(
+        for db: CGFloat,
+        in rect: CGRect
+    ) -> CGFloat {
+        let clamped = min(max(db, -60), 0)
+        let progress = (0 - clamped) / 60
+        return rect.minY + (progress * rect.height)
     }
 
     private func assertBaseFillVisible(
@@ -902,6 +1126,113 @@ final class PresetStoreTests: XCTestCase {
             blue: CGFloat(bytes[offset + 2]) / 255.0,
             alpha: CGFloat(bytes[offset + 3]) / 255.0
         )
+    }
+
+    func testMetronomeTickSchedulerDelaysQuarterClickWhenOffsetIsPositive() {
+        let context = MetronomeScheduleContext(
+            currentBeat: 0,
+            tempoBPM: 120,
+            pulse: .oneQuarter,
+            offset: Offset(milliseconds: 125)
+        )
+
+        let ticks = MetronomeTickScheduler.ticksToSchedule(
+            context: context,
+            horizonSeconds: 0.5,
+            lastScheduledTick: nil
+        )
+
+        guard let firstTick = ticks.first else {
+            return XCTFail("Expected at least one scheduled click")
+        }
+
+        XCTAssertEqual(firstTick.tickIndex, 1)
+        XCTAssertEqual(firstTick.delaySeconds, 0.375, accuracy: 0.000_1)
+    }
+
+    func testMetronomeTickSchedulerAdvancesQuarterClickWhenOffsetIsNegative() {
+        let context = MetronomeScheduleContext(
+            currentBeat: 0,
+            tempoBPM: 120,
+            pulse: .oneQuarter,
+            offset: Offset(milliseconds: -125)
+        )
+
+        let ticks = MetronomeTickScheduler.ticksToSchedule(
+            context: context,
+            horizonSeconds: 0.5,
+            lastScheduledTick: nil
+        )
+
+        guard let firstTick = ticks.first else {
+            return XCTFail("Expected at least one scheduled click")
+        }
+
+        XCTAssertEqual(firstTick.tickIndex, 0)
+        XCTAssertEqual(firstTick.delaySeconds, 0.125, accuracy: 0.000_1)
+    }
+
+    func testMetronomeTickSchedulerContinuesFromLastScheduledEighthTick() {
+        let context = MetronomeScheduleContext(
+            currentBeat: 4,
+            tempoBPM: 120,
+            pulse: .oneEighth,
+            offset: Offset(milliseconds: 0)
+        )
+
+        let ticks = MetronomeTickScheduler.ticksToSchedule(
+            context: context,
+            horizonSeconds: 0.6,
+            lastScheduledTick: 8
+        )
+
+        XCTAssertEqual(ticks.map(\.tickIndex), [9, 10])
+        XCTAssertEqual(ticks.count, 2)
+        XCTAssertEqual(ticks[0].delaySeconds, 0.25, accuracy: 0.000_1)
+        XCTAssertEqual(ticks[1].delaySeconds, 0.5, accuracy: 0.000_1)
+    }
+
+    func testTransportBeatResolverUsesProvidedTempoForBeatProgress() throws {
+        let context = try XCTUnwrap(
+            TransportBeatResolver.resolve(
+                elapsedSeconds: 2.0 / 3.0,
+                tempoBPM: 90,
+                offset: Offset(milliseconds: 100)
+            )
+        )
+
+        XCTAssertEqual(context.elapsedSeconds, 2.0 / 3.0, accuracy: 0.000_1)
+        XCTAssertEqual(context.tempoBPM, 90, accuracy: 0.000_1)
+        XCTAssertEqual(context.beat, 1, accuracy: 0.000_1)
+        XCTAssertEqual(context.effectiveBeat, 1.15, accuracy: 0.000_1)
+    }
+
+    func testTransportBeatResolverAdjustsExternalElapsedSecondsFromLocalReset() {
+        let playingElapsed = TransportBeatResolver.adjustedExternalElapsedSeconds(
+            rawElapsedSeconds: 6.5,
+            resetOriginSeconds: 6.0,
+            heldElapsedSeconds: 0.125,
+            isPlaying: true
+        )
+        let heldElapsed = TransportBeatResolver.adjustedExternalElapsedSeconds(
+            rawElapsedSeconds: 7.25,
+            resetOriginSeconds: 6.0,
+            heldElapsedSeconds: 0.5,
+            isPlaying: false
+        )
+
+        XCTAssertEqual(playingElapsed, 0.5, accuracy: 0.000_1)
+        XCTAssertEqual(heldElapsed, 0.5, accuracy: 0.000_1)
+    }
+
+    func testGridPreviewDriverBeatBasedFrameUsesResolvedBeatDirectly() {
+        let driver = GridPreviewDriver()
+        let frame = driver.makeFrame(
+            settings: [makeEnabledCycle()],
+            beat: 1
+        )
+
+        XCTAssertEqual(frame.cycles.first?.activeStepIndex, 1)
     }
 
 }

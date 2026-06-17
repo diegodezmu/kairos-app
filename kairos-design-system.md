@@ -520,6 +520,11 @@ States documented in Figma:
 - `hover`
 - `pressed`
 
+Confirmed desktop colors:
+
+- hover fill `#2F3238`
+- pressed/selected highlight `#4378B880`
+
 Use it for compact value selectors and icon buttons.
 
 #### `button/tertiary`
@@ -585,7 +590,6 @@ Variants:
 
 - `link-peers`
 - `link-disconnected`
-- `midi`
 - `internal`
 
 Binding:
@@ -617,14 +621,14 @@ Composition:
 
 States (dot color + label text):
 
-- `receiving` — green dot + the BlackHole channel text (e.g. `BlackHole 1–2`)
-- `no-signal` — white dot + `No signal`
-- `clipping` — red dot + `Clipping`
+- `waiting` — white dot + `Waiting for Max4live Slot N`
+- `connected` — green dot + `Max4live Slot N`
+- `disconnected` — red dot + `Max4live Slot N`
 
 Binding:
 
-- dot color uses the Kairos domain tokens: `color/kairos/lane-status-active` (green),
-  `color/kairos/lane-status-idle` (white), `color/kairos/clip` (red)
+- dot color uses the semantic sidebar mapping from Figma:
+  `connected` green, `waiting` white, `disconnected` red
 - label style `type/label/xs`, tertiary text color
 
 The dot is only meaningful for an enabled window; a disabled window collapses and shows
@@ -651,6 +655,17 @@ Confirmed binding:
 - height `56`
 - horizontal padding `16`
 - primary horizontal gap `24`
+- preset selector width `146`
+- right info cluster is fixed-width to avoid visual drift:
+  - elapsed time `74`
+  - BPM `78`
+  - sync status `146`
+
+Behavior notes:
+
+- the preset selector must not stretch to fill the toolbar
+- the right-side info cluster must stay visually locked during updates
+- the metronome icon is a two-state component and alternates `ping` / `pong` on the beat
 
 #### `tool-bar/mobile/horizontal`
 
@@ -717,9 +732,22 @@ High-level structure:
   - four windows
 
 Each cycle (Grid) and window (Level) header carries two trailing controls, left to
-right: `icon/rename` (custom-name button) then the on/off `icon/power`. In Level, each
-window also shows an `input-status` caption directly under its name. The `share data`
-row is phase 2 and is not present in the v1 screens.
+right: only the on/off `icon/power`. Renaming is no longer exposed as a dedicated
+button; Grid and Level channel names are renamed from the title context menu. In Level,
+each window also shows an `input-status` caption directly under its name. The `share
+data` row is phase 2 and is not present in the v1 screens.
+
+Global sync specifics confirmed in Figma:
+
+- sync source options are only `Internal` and `Link`
+- the old MIDI option is removed
+- there is no separate live sync-status row inside the sidebar card
+- `Visual offset` is renamed to `Latency`
+- latency control is a three-part control:
+  - decrement button
+  - centered value field
+  - increment button
+- the center field supports direct editing and fine drag adjustment in milliseconds
 
 Row pattern used throughout the sidebar:
 
@@ -750,6 +778,7 @@ Documented visual modes:
 - `block`
 - `border`
 - `line`
+- `custom`
 
 Documented step-count variants:
 
@@ -792,6 +821,15 @@ not mean the code needs four different component trees.
 
 Treat them as one drawing model with different render modes.
 
+`custom` is a real user-facing mode, not a Figma-only exploratory variant:
+
+- it appears as the last button in the mode selector
+- when active, individual steps become clickable
+- each click cycles that specific step through `block -> border -> line -> block`
+- editing is per step, not per row
+- this applies to every cycle except `128`
+- the `128`-step cycle remains visually locked to line mode even when `custom` is selected
+
 ### Level
 
 Level is represented in the component page through:
@@ -811,6 +849,7 @@ Confirmed `window/desktop` binding:
 - container background `surface`
 - radius `12`
 - inner padding `16`
+- channel title centered at the top of the panel
 
 Confirmed scale anatomy:
 

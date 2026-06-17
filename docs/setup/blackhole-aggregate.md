@@ -1,5 +1,7 @@
 # BlackHole 16ch + routing desde Ableton
 
+> Legacy / fallback: esta guia documenta el spike original con `BlackHole`, pero ya no es la via principal para `Level` en KAIROS. El flujo recomendado para uso real esta en `docs/setup/level-max-for-live.md`.
+
 Esta guía deja claro el reparto de responsabilidades:
 
 - Kairos debe abrir `BlackHole 16ch` directamente como entrada CoreAudio.

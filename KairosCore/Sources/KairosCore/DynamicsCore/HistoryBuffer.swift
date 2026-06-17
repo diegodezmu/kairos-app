@@ -2,6 +2,8 @@ import Foundation
 
 /// Allowed history windows from PRD 7.5.
 public enum HistoryRange: Double, CaseIterable, Sendable {
+    case twoSeconds = 2
+    case fiveSeconds = 5
     case tenSeconds = 10
     case thirtySeconds = 30
     case oneMinute = 60

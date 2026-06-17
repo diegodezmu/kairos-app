@@ -25,10 +25,12 @@ struct GridRenderFrame: Sendable, Equatable {
     struct Cycle: Identifiable, Sendable, Equatable {
         let slot: CycleSlot
         let mode: Mode
+        let stepModes: [Mode]?
         let stepCount: Int
         let activeStepIndex: Int?
         let anticipationRange: Range<Int>?
         let resetMark: GridResetMark
+        let allowsCustomEditing: Bool
 
         var id: Int {
             slot.rawValue
@@ -39,6 +41,7 @@ struct GridRenderFrame: Sendable, Equatable {
 
     var accessibilityLabel: String {
         guard
+            cycles.allSatisfy({ $0.stepModes == nil }),
             let firstMode = cycles.first?.mode,
             cycles.allSatisfy({ $0.mode == firstMode })
         else {
@@ -63,10 +66,12 @@ struct GridRenderFrame: Sendable, Equatable {
                 Cycle(
                     slot: state.config.slot,
                     mode: mode,
+                    stepModes: nil,
                     stepCount: state.config.stepNumber.rawValue,
                     activeStepIndex: state.currentStep,
                     anticipationRange: state.anticipationRange,
-                    resetMark: resetMarks[state.config.slot] ?? .none
+                    resetMark: resetMarks[state.config.slot] ?? .none,
+                    allowsCustomEditing: false
                 )
             })
     }
@@ -95,18 +100,31 @@ private enum GridResetMarkMapper {
 
 struct GridRenderer: View {
     let frame: GridRenderFrame
+    var onStepTap: ((CycleSlot, Int) -> Void)? = nil
 
     var body: some View {
-        Canvas(
-            opaque: true,
-            colorMode: .linear,
-            rendersAsynchronously: false
-        ) { context, size in
-            GridCanvasRenderer.draw(
-                frame: frame,
-                in: &context,
-                size: size
-            )
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                Canvas(opaque: true, rendersAsynchronously: false) { context, size in
+                    context.withCGContext { cgContext in
+                        GridCanvasRenderer.draw(
+                            frame: frame,
+                            in: cgContext,
+                            size: size
+                        )
+                    }
+                }
+
+                if let onStepTap {
+                    GridInteractionOverlay(
+                        targets: GridLayoutMetrics.editableTargets(
+                            for: frame,
+                            size: geometry.size
+                        ),
+                        onStepTap: onStepTap
+                    )
+                }
+            }
         }
         .clipShape(
             RoundedRectangle(
@@ -129,15 +147,19 @@ struct GridRenderer: View {
 private enum GridCanvasRenderer {
     static func draw(
         frame: GridRenderFrame,
-        in context: inout GraphicsContext,
+        in context: CGContext,
         size: CGSize
     ) {
         let canvasRect = CGRect(origin: .zero, size: size)
-        let backgroundPath = Path(
+        let backgroundPath = CGPath(
             roundedRect: canvasRect,
-            cornerRadius: GridDesignTokens.radiusCanvas
+            cornerWidth: GridDesignTokens.radiusCanvas,
+            cornerHeight: GridDesignTokens.radiusCanvas,
+            transform: nil
         )
-        context.fill(backgroundPath, with: .color(GridDesignTokens.backgroundSurface))
+        context.setFillColor(GridDesignTokens.backgroundSurface.cgColor)
+        context.addPath(backgroundPath)
+        context.fillPath()
 
         guard !frame.cycles.isEmpty else {
             return
@@ -148,15 +170,14 @@ private enum GridCanvasRenderer {
         let rowHeight = max(0, (size.height - totalGap) / CGFloat(rowCount))
 
         for (index, cycle) in frame.cycles.enumerated() {
-            let rowRect = CGRect(
-                x: 0,
-                y: CGFloat(index) * (rowHeight + GridDesignTokens.rowGap),
-                width: size.width,
-                height: rowHeight
+            let rowRect = GridLayoutMetrics.rowRect(
+                at: index,
+                rowHeight: rowHeight,
+                totalWidth: size.width
             )
             drawCycle(
                 cycle,
-                in: &context,
+                in: context,
                 rowRect: rowRect
             )
         }
@@ -164,26 +185,27 @@ private enum GridCanvasRenderer {
 
     private static func drawCycle(
         _ cycle: GridRenderFrame.Cycle,
-        in context: inout GraphicsContext,
+        in context: CGContext,
         rowRect: CGRect
     ) {
         let horizontalInset = min(GridDesignTokens.rowInset, rowRect.width / 2)
         let verticalInset = min(GridDesignTokens.rowInset, rowRect.height / 2)
         let contentRect = rowRect.insetBy(dx: horizontalInset, dy: verticalInset)
         let stepCount = max(cycle.stepCount, 1)
-        let totalGap = GridDesignTokens.stepGap * CGFloat(max(stepCount - 1, 0))
-        let stepWidth = max(0, (contentRect.width - totalGap) / CGFloat(stepCount))
+        let stepWidth = GridLayoutMetrics.stepWidth(
+            stepCount: stepCount,
+            contentRect: contentRect
+        )
 
         guard stepWidth > 0, contentRect.height > 0 else {
             return
         }
 
         for stepIndex in 0..<stepCount {
-            let stepRect = CGRect(
-                x: contentRect.minX + (CGFloat(stepIndex) * (stepWidth + GridDesignTokens.stepGap)),
-                y: contentRect.minY,
-                width: stepWidth,
-                height: contentRect.height
+            let stepRect = GridLayoutMetrics.stepRect(
+                stepIndex: stepIndex,
+                stepCount: stepCount,
+                contentRect: contentRect
             )
 
             let visualState = GridStepVisualState.resolve(
@@ -192,18 +214,19 @@ private enum GridCanvasRenderer {
                 anticipationRange: cycle.anticipationRange,
                 resetMark: cycle.resetMark
             )
+            let mode = cycle.stepModes?[safe: stepIndex] ?? cycle.mode
 
             drawStep(
-                in: &context,
+                in: context,
                 rect: stepRect,
                 state: visualState,
-                mode: cycle.mode
+                mode: mode
             )
         }
     }
 
     private static func drawStep(
-        in context: inout GraphicsContext,
+        in context: CGContext,
         rect: CGRect,
         state: GridStepVisualState,
         mode: GridRenderFrame.Mode
@@ -215,10 +238,15 @@ private enum GridCanvasRenderer {
                 rect.width / 2,
                 rect.height / 2
             )
-            context.fill(
-                Path(roundedRect: rect, cornerRadius: radius),
-                with: .color(state.color)
+            let path = CGPath(
+                roundedRect: rect,
+                cornerWidth: radius,
+                cornerHeight: radius,
+                transform: nil
             )
+            context.setFillColor(state.color.cgColor)
+            context.addPath(path)
+            context.fillPath()
 
         case .border:
             let lineWidth = min(
@@ -239,15 +267,20 @@ private enum GridCanvasRenderer {
                     insetRect.height / 2
                 )
             )
-            context.stroke(
-                Path(roundedRect: insetRect, cornerRadius: radius),
-                with: .color(state.color),
-                lineWidth: lineWidth
+            let path = CGPath(
+                roundedRect: insetRect,
+                cornerWidth: radius,
+                cornerHeight: radius,
+                transform: nil
             )
+            context.setStrokeColor(state.color.cgColor)
+            context.setLineWidth(lineWidth)
+            context.addPath(path)
+            context.strokePath()
 
         case .lineMD:
             drawLine(
-                in: &context,
+                in: context,
                 rect: rect,
                 state: state,
                 targetWidth: GridDesignTokens.lineMediumWidth
@@ -255,7 +288,7 @@ private enum GridCanvasRenderer {
 
         case .lineSM:
             drawLine(
-                in: &context,
+                in: context,
                 rect: rect,
                 state: state,
                 targetWidth: GridDesignTokens.lineSmallWidth
@@ -264,7 +297,7 @@ private enum GridCanvasRenderer {
     }
 
     private static func drawLine(
-        in context: inout GraphicsContext,
+        in context: CGContext,
         rect: CGRect,
         state: GridStepVisualState,
         targetWidth: CGFloat
@@ -285,10 +318,15 @@ private enum GridCanvasRenderer {
             lineRect.height / 2
         )
 
-        context.fill(
-            Path(roundedRect: lineRect, cornerRadius: radius),
-            with: .color(state.color)
+        let path = CGPath(
+            roundedRect: lineRect,
+            cornerWidth: radius,
+            cornerHeight: radius,
+            transform: nil
         )
+        context.setFillColor(state.color.cgColor)
+        context.addPath(path)
+        context.fillPath()
     }
 }
 
@@ -330,7 +368,7 @@ enum GridStepVisualState: Equatable {
         return .inactive
     }
 
-    var color: Color {
+    var color: GridResolvedColor {
         switch self {
         case .active:
             GridDesignTokens.stepActive
@@ -346,13 +384,49 @@ enum GridStepVisualState: Equatable {
     }
 }
 
+struct GridResolvedColor: Sendable, Equatable {
+    let red: CGFloat
+    let green: CGFloat
+    let blue: CGFloat
+    let opacity: CGFloat
+
+    init(
+        red: Int,
+        green: Int,
+        blue: Int,
+        opacity: CGFloat = 1
+    ) {
+        self.red = CGFloat(red) / 255.0
+        self.green = CGFloat(green) / 255.0
+        self.blue = CGFloat(blue) / 255.0
+        self.opacity = opacity
+    }
+
+    var color: Color {
+        Color(
+            .sRGB,
+            red: Double(red),
+            green: Double(green),
+            blue: Double(blue),
+            opacity: Double(opacity)
+        )
+    }
+
+    var cgColor: CGColor {
+        CGColor(
+            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+            components: [red, green, blue, opacity]
+        )!
+    }
+}
+
 private enum GridDesignTokens {
-    static let backgroundSurface = Color(red: 16.0 / 255.0, green: 16.0 / 255.0, blue: 18.0 / 255.0)
-    static let stepActive = Color(red: 245.0 / 255.0, green: 247.0 / 255.0, blue: 250.0 / 255.0)
-    static let stepInactive = Color(red: 36.0 / 255.0, green: 38.0 / 255.0, blue: 43.0 / 255.0)
-    static let resetCombined = Color(red: 116.0 / 255.0, green: 215.0 / 255.0, blue: 154.0 / 255.0)
-    static let resetGeneral = Color(red: 170.0 / 255.0, green: 130.0 / 255.0, blue: 219.0 / 255.0)
-    static let anticipation = Color(red: 233.0 / 255.0, green: 130.0 / 255.0, blue: 132.0 / 255.0)
+    static let backgroundSurface = GridResolvedColor(red: 16, green: 16, blue: 18)
+    static let stepActive = GridResolvedColor(red: 245, green: 247, blue: 250)
+    static let stepInactive = GridResolvedColor(red: 36, green: 38, blue: 43)
+    static let resetCombined = GridResolvedColor(red: 116, green: 215, blue: 154)
+    static let resetGeneral = GridResolvedColor(red: 170, green: 130, blue: 219)
+    static let anticipation = GridResolvedColor(red: 233, green: 130, blue: 132)
 
     static let surfaceRadius: CGFloat = 8
     static let lineRadius: CGFloat = 12
@@ -384,6 +458,20 @@ final class GridPreviewDriver {
         offset: Offset,
         elapsedSeconds: TimeInterval
     ) -> GridRenderFrame {
+        let beat = max(
+            0,
+            (elapsedSeconds * (Double(bpm) / 60.0)) + offset.beats(atTempo: Double(bpm))
+        )
+        return makeFrame(
+            settings: settings,
+            beat: beat
+        )
+    }
+
+    func makeFrame(
+        settings: [GridCycleSettings],
+        beat: Double
+    ) -> GridRenderFrame {
         let enabledSettings = settings
             .filter(\.isEnabled)
             .sorted { $0.slot.rawValue < $1.slot.rawValue }
@@ -394,10 +482,6 @@ final class GridPreviewDriver {
             return GridRenderFrame(cycles: [])
         }
 
-        let beat = max(
-            0,
-            (elapsedSeconds * (Double(bpm) / 60.0)) + offset.beats(atTempo: Double(bpm))
-        )
         let currentStates = cycleEngine.resolveStates(
             for: enabledSettings.map(\.cycleConfig),
             beat: beat,
@@ -426,13 +510,20 @@ final class GridPreviewDriver {
                 return nil
             }
 
+            let presentation = setting.visualMode.presentation(
+                for: setting.stepNumber,
+                customStepModes: setting.customStepModes
+            )
+
             return GridRenderFrame.Cycle(
                 slot: setting.slot,
-                mode: setting.visualMode.renderMode(for: setting.stepNumber),
+                mode: presentation.fallbackMode,
+                stepModes: presentation.stepModes,
                 stepCount: state.config.stepNumber.rawValue,
                 activeStepIndex: state.currentStep,
                 anticipationRange: state.anticipationRange,
-                resetMark: resetMarks[setting.slot] ?? .none
+                resetMark: resetMarks[setting.slot] ?? .none,
+                allowsCustomEditing: presentation.allowsCustomEditing
             )
         }
 
@@ -483,8 +574,57 @@ final class GridPreviewDriver {
 }
 
 private extension GridVisualMode {
-    func renderMode(for stepNumber: StepNumber) -> GridRenderFrame.Mode {
+    func presentation(
+        for stepNumber: StepNumber,
+        customStepModes: [GridStepDisplayMode]?
+    ) -> GridCyclePresentation {
         switch self {
+        case .block:
+            return GridCyclePresentation(
+                fallbackMode: .block,
+                stepModes: nil,
+                allowsCustomEditing: false
+            )
+        case .border:
+            return GridCyclePresentation(
+                fallbackMode: .border,
+                stepModes: nil,
+                allowsCustomEditing: false
+            )
+        case .line:
+            return GridCyclePresentation(
+                fallbackMode: renderMode(for: .line, stepNumber: stepNumber),
+                stepModes: nil,
+                allowsCustomEditing: false
+            )
+        case .custom:
+            guard stepNumber != .oneHundredTwentyEight else {
+                return GridCyclePresentation(
+                    fallbackMode: .lineSM,
+                    stepModes: nil,
+                    allowsCustomEditing: false
+                )
+            }
+
+            let modes = SettingsDefaults.normalizedCustomStepModes(
+                customStepModes,
+                stepCount: stepNumber.rawValue,
+                fallback: .block
+            ) ?? Array(repeating: .block, count: stepNumber.rawValue)
+
+            return GridCyclePresentation(
+                fallbackMode: renderMode(for: .block, stepNumber: stepNumber),
+                stepModes: modes.map { renderMode(for: $0, stepNumber: stepNumber) },
+                allowsCustomEditing: true
+            )
+        }
+    }
+
+    private func renderMode(
+        for displayMode: GridStepDisplayMode,
+        stepNumber: StepNumber
+    ) -> GridRenderFrame.Mode {
+        switch displayMode {
         case .block:
             return .block
         case .border:
@@ -492,6 +632,134 @@ private extension GridVisualMode {
         case .line:
             return stepNumber.rawValue > StepNumber.thirtyTwo.rawValue ? .lineSM : .lineMD
         }
+    }
+}
+
+private struct GridCyclePresentation {
+    let fallbackMode: GridRenderFrame.Mode
+    let stepModes: [GridRenderFrame.Mode]?
+    let allowsCustomEditing: Bool
+}
+
+private struct GridEditableStepTarget: Identifiable {
+    let cycleSlot: CycleSlot
+    let stepIndex: Int
+    let rect: CGRect
+
+    var id: String {
+        "\(cycleSlot.rawValue)-\(stepIndex)"
+    }
+}
+
+private enum GridLayoutMetrics {
+    static func rowRect(
+        at index: Int,
+        rowHeight: CGFloat,
+        totalWidth: CGFloat
+    ) -> CGRect {
+        CGRect(
+            x: 0,
+            y: CGFloat(index) * (rowHeight + GridDesignTokens.rowGap),
+            width: totalWidth,
+            height: rowHeight
+        )
+    }
+
+    static func stepWidth(
+        stepCount: Int,
+        contentRect: CGRect
+    ) -> CGFloat {
+        let totalGap = GridDesignTokens.stepGap * CGFloat(max(stepCount - 1, 0))
+        return max(0, (contentRect.width - totalGap) / CGFloat(stepCount))
+    }
+
+    static func stepRect(
+        stepIndex: Int,
+        stepCount: Int,
+        contentRect: CGRect
+    ) -> CGRect {
+        let width = stepWidth(
+            stepCount: stepCount,
+            contentRect: contentRect
+        )
+
+        return CGRect(
+            x: contentRect.minX + (CGFloat(stepIndex) * (width + GridDesignTokens.stepGap)),
+            y: contentRect.minY,
+            width: width,
+            height: contentRect.height
+        )
+    }
+
+    static func editableTargets(
+        for frame: GridRenderFrame,
+        size: CGSize
+    ) -> [GridEditableStepTarget] {
+        guard !frame.cycles.isEmpty else {
+            return []
+        }
+
+        let rowCount = frame.cycles.count
+        let totalGap = GridDesignTokens.rowGap * CGFloat(max(rowCount - 1, 0))
+        let rowHeight = max(0, (size.height - totalGap) / CGFloat(rowCount))
+
+        return frame.cycles.enumerated().flatMap { index, cycle in
+            guard cycle.allowsCustomEditing else {
+                return [GridEditableStepTarget]()
+            }
+
+            let rowRect = rowRect(
+                at: index,
+                rowHeight: rowHeight,
+                totalWidth: size.width
+            )
+            let horizontalInset = min(GridDesignTokens.rowInset, rowRect.width / 2)
+            let verticalInset = min(GridDesignTokens.rowInset, rowRect.height / 2)
+            let contentRect = rowRect.insetBy(dx: horizontalInset, dy: verticalInset)
+
+            return (0..<max(cycle.stepCount, 0)).map { stepIndex in
+                GridEditableStepTarget(
+                    cycleSlot: cycle.slot,
+                    stepIndex: stepIndex,
+                    rect: stepRect(
+                        stepIndex: stepIndex,
+                        stepCount: cycle.stepCount,
+                        contentRect: contentRect
+                    )
+                )
+            }
+        }
+    }
+}
+
+private struct GridInteractionOverlay: View {
+    let targets: [GridEditableStepTarget]
+    let onStepTap: (CycleSlot, Int) -> Void
+
+    var body: some View {
+        ForEach(targets) { target in
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+                .frame(width: target.rect.width, height: target.rect.height)
+                .position(
+                    x: target.rect.midX,
+                    y: target.rect.midY
+                )
+                .onTapGesture {
+                    onStepTap(target.cycleSlot, target.stepIndex)
+                }
+        }
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard indices.contains(index) else {
+            return nil
+        }
+
+        return self[index]
     }
 }
 
