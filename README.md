@@ -25,7 +25,7 @@ xcodebuild -scheme Kairos -destination 'platform=macOS' build
 
 ## Configuración de Level con Max for Live
 
-Kairos espera telemetría local enviada por `KAIROSLevelSender.amxd`. La guía operativa está en [docs/setup/level-max-for-live.md](/Users/diegofernandezmunoz/Developer/personal/kairos-app/docs/setup/level-max-for-live.md).
+Kairos espera telemetría local enviada por `KAIROSLevelSender.amxd`. La guía operativa está en [docs/setup/level-max-for-live.md](docs/setup/level-max-for-live.md).
 
 Resumen:
 
