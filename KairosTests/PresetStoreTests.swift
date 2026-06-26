@@ -14,11 +14,8 @@ final class PresetStoreTests: XCTestCase {
 
         let store = try PresetStore(directoryURL: temporaryDirectory)
         let expectedLibrary = PresetLibrary(
-            presets: PresetSlot.allCases.enumerated().map { index, slot in
-                StoredPreset(
-                    slot: slot,
-                    settings: makePreset(seed: index)
-                )
+            presets: makeStoredPresets(count: 5) { index in
+                makePreset(seed: index)
             }
         )
 
@@ -130,27 +127,91 @@ final class PresetStoreTests: XCTestCase {
         XCTAssertEqual(
             GridStepVisualState.resolve(
                 stepIndex: 13,
+                stepCount: 16,
                 activeStepIndex: 13,
                 anticipationRange: 12..<16,
-                resetMark: .none
+                resetMark: .none,
+                mode: .block
             ),
             .anticipation
         )
         XCTAssertEqual(
             GridStepVisualState.resolve(
-                stepIndex: 12,
+                stepIndex: 14,
+                stepCount: 16,
                 activeStepIndex: 13,
                 anticipationRange: 12..<16,
-                resetMark: .none
+                resetMark: .none,
+                mode: .block
             ),
             .inactive
         )
         XCTAssertEqual(
             GridStepVisualState.resolve(
                 stepIndex: 15,
+                stepCount: 16,
                 activeStepIndex: 13,
                 anticipationRange: 12..<16,
-                resetMark: .none
+                resetMark: .none,
+                mode: .block
+            ),
+            .inactive
+        )
+    }
+
+    func testStepVisualStateAppliesFigmaInactiveCheckpointRulesByLengthAndMode() {
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 2,
+                stepCount: 4,
+                activeStepIndex: nil,
+                anticipationRange: nil,
+                resetMark: .none,
+                mode: .border
+            ),
+            .inactiveCheckpoint
+        )
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 2,
+                stepCount: 4,
+                activeStepIndex: nil,
+                anticipationRange: nil,
+                resetMark: .none,
+                mode: .block
+            ),
+            .inactive
+        )
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 48,
+                stepCount: 64,
+                activeStepIndex: nil,
+                anticipationRange: nil,
+                resetMark: .none,
+                mode: .lineSM
+            ),
+            .inactiveCheckpoint
+        )
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 112,
+                stepCount: 128,
+                activeStepIndex: nil,
+                anticipationRange: nil,
+                resetMark: .none,
+                mode: .lineSM
+            ),
+            .inactiveCheckpoint
+        )
+        XCTAssertEqual(
+            GridStepVisualState.resolve(
+                stepIndex: 49,
+                stepCount: 64,
+                activeStepIndex: nil,
+                anticipationRange: nil,
+                resetMark: .none,
+                mode: .lineSM
             ),
             .inactive
         )
@@ -667,22 +728,32 @@ final class PresetStoreTests: XCTestCase {
         )
     }
 
+    private func makeStoredPresets(
+        count: Int,
+        settings: (Int) -> SettingsPreset
+    ) -> [StoredPreset] {
+        (0 ..< count).map { index in
+            StoredPreset(
+                id: index == 0 ? StoredPreset.defaultID : "preset-\(index)",
+                name: index == 0 ? StoredPreset.defaultName : "preset \(index)",
+                settings: settings(index)
+            )
+        }
+    }
+
     func testLegacyPresetPayloadDefaultsMetronomeToggleToOff() throws {
         let seededLibrary = PresetLibrary(
-            presets: PresetSlot.allCases.map { slot in
-                StoredPreset(
-                    slot: slot,
-                    settings: SettingsPreset(
-                        syncSource: .internalClock,
-                        bpm: 120,
-                        isMetronomeEnabled: true,
-                        metronomePulse: .oneQuarter,
-                        offset: Offset(milliseconds: 0),
-                        isGridVisible: true,
-                        isLevelVisible: true,
-                        gridCycles: CycleSlot.allCases.map { SettingsDefaults.defaultGridCycle(for: $0) },
-                        levelLanes: LaneID.allCases.map { SettingsDefaults.defaultLevelLane(for: $0) }
-                    )
+            presets: makeStoredPresets(count: 5) { _ in
+                SettingsPreset(
+                    syncSource: .internalClock,
+                    bpm: 120,
+                    isMetronomeEnabled: true,
+                    metronomePulse: .oneQuarter,
+                    offset: Offset(milliseconds: 0),
+                    isGridVisible: true,
+                    isLevelVisible: true,
+                    gridCycles: CycleSlot.allCases.map { SettingsDefaults.defaultGridCycle(for: $0) },
+                    levelLanes: LaneID.allCases.map { SettingsDefaults.defaultLevelLane(for: $0) }
                 )
             }
         )
@@ -726,24 +797,21 @@ final class PresetStoreTests: XCTestCase {
 
     func testLegacyPresetPayloadDefaultsUSBMIDISourceToNone() throws {
         let seededLibrary = PresetLibrary(
-            presets: PresetSlot.allCases.map { slot in
-                StoredPreset(
-                    slot: slot,
-                    settings: SettingsPreset(
-                        syncSource: .usb,
-                        usbMIDISource: USBMIDISourcePreference(
-                            uniqueID: 99,
-                            displayName: "Master Clock"
-                        ),
-                        bpm: 120,
-                        isMetronomeEnabled: false,
-                        metronomePulse: .oneQuarter,
-                        offset: Offset(milliseconds: 0),
-                        isGridVisible: true,
-                        isLevelVisible: true,
-                        gridCycles: CycleSlot.allCases.map { SettingsDefaults.defaultGridCycle(for: $0) },
-                        levelLanes: LaneID.allCases.map { SettingsDefaults.defaultLevelLane(for: $0) }
-                    )
+            presets: makeStoredPresets(count: 5) { _ in
+                SettingsPreset(
+                    syncSource: .usb,
+                    usbMIDISource: USBMIDISourcePreference(
+                        uniqueID: 99,
+                        displayName: "Master Clock"
+                    ),
+                    bpm: 120,
+                    isMetronomeEnabled: false,
+                    metronomePulse: .oneQuarter,
+                    offset: Offset(milliseconds: 0),
+                    isGridVisible: true,
+                    isLevelVisible: true,
+                    gridCycles: CycleSlot.allCases.map { SettingsDefaults.defaultGridCycle(for: $0) },
+                    levelLanes: LaneID.allCases.map { SettingsDefaults.defaultLevelLane(for: $0) }
                 )
             }
         )
@@ -768,6 +836,97 @@ final class PresetStoreTests: XCTestCase {
 
         XCTAssertTrue(
             library.presets.allSatisfy { $0.settings.usbMIDISource == .none }
+        )
+    }
+
+    func testLegacyPresetSlotsMigrateToDynamicPresetIDs() throws {
+        let seededLibrary = PresetLibrary(
+            presets: makeStoredPresets(count: 5) { index in
+                makePreset(seed: index)
+            }
+        )
+        let data = try JSONEncoder().encode(PresetLibraryDTO(library: seededLibrary))
+        var jsonObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var presets = try XCTUnwrap(jsonObject["presets"] as? [[String: Any]])
+        let legacySlots = [
+            "defaultPreset",
+            "custom1",
+            "custom2",
+            "custom3",
+            "custom4",
+        ]
+
+        for index in presets.indices {
+            presets[index]["slot"] = legacySlots[index]
+            presets[index].removeValue(forKey: "id")
+            presets[index].removeValue(forKey: "name")
+        }
+
+        jsonObject["schemaVersion"] = 1
+        jsonObject["presets"] = presets
+
+        let legacyData = try JSONSerialization.data(withJSONObject: jsonObject)
+        let dto = try JSONDecoder().decode(PresetLibraryDTO.self, from: legacyData)
+        let library = try dto.domainModel()
+
+        XCTAssertEqual(
+            library.presets.map(\.id),
+            [
+                StoredPreset.defaultID,
+                "starter-practice-grid",
+                "starter-level-monitor",
+                "starter-link-performance",
+            ]
+        )
+        XCTAssertEqual(
+            library.presets.map(\.name),
+            [
+                StoredPreset.defaultName,
+                "practice grid",
+                "level monitor",
+                "link performance",
+            ]
+        )
+    }
+
+    func testPresetLibraryNormalizationInsertsDefaultAndRepairsBlankCustomNames() {
+        let library = PresetLibrary(
+            presets: [
+                StoredPreset(
+                    id: "custom-preset",
+                    name: "   ",
+                    settings: makePreset(seed: 1)
+                )
+            ]
+        )
+
+        XCTAssertEqual(library.presets.count, 2)
+        XCTAssertEqual(library.presets.first?.id, StoredPreset.defaultID)
+        XCTAssertEqual(library.presets.first?.name, StoredPreset.defaultName)
+        XCTAssertEqual(library.presets.last?.id, "custom-preset")
+        XCTAssertEqual(library.presets.last?.name, "preset")
+    }
+
+    func testFactoryPresetLibraryIncludesDefaultAndThreeStarterPresets() {
+        XCTAssertEqual(
+            PresetLibrary.factoryDefault.presets.map(\.id),
+            [
+                StoredPreset.defaultID,
+                "starter-practice-grid",
+                "starter-level-monitor",
+                "starter-link-performance",
+            ]
+        )
+        XCTAssertEqual(
+            PresetLibrary.factoryDefault.presets.map(\.name),
+            [
+                StoredPreset.defaultName,
+                "practice grid",
+                "level monitor",
+                "link performance",
+            ]
         )
     }
 

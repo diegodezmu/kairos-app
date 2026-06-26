@@ -234,3 +234,79 @@ final class LevelTelemetryTests: XCTestCase {
         )
     }
 }
+
+final class DesktopWorkspaceSplitMetricsTests: XCTestCase {
+    func testSplitMetricsClampRespectsPanelMinimumsWhenViewportAllowsIt() {
+        let lowFractionMetrics = DesktopWorkspaceSplitMetrics(
+            availableHeight: 1_000,
+            gridFraction: 0.1,
+            liveGridHeight: nil,
+            gap: 16,
+            gridMinHeight: 128,
+            levelMinHeight: 200
+        )
+        let highFractionMetrics = DesktopWorkspaceSplitMetrics(
+            availableHeight: 1_000,
+            gridFraction: 0.95,
+            liveGridHeight: nil,
+            gap: 16,
+            gridMinHeight: 128,
+            levelMinHeight: 200
+        )
+
+        XCTAssertEqual(lowFractionMetrics.contentHeight, 984, accuracy: 0.001)
+        XCTAssertEqual(lowFractionMetrics.gridHeight, 128, accuracy: 0.001)
+        XCTAssertEqual(highFractionMetrics.gridHeight, 784, accuracy: 0.001)
+        XCTAssertEqual(highFractionMetrics.levelHeight, 200, accuracy: 0.001)
+        XCTAssertEqual(highFractionMetrics.dividerCenterY, 792, accuracy: 0.001)
+    }
+
+    func testSplitMetricsUsesLiveGridHeightDuringDrag() {
+        let metrics = DesktopWorkspaceSplitMetrics(
+            availableHeight: 1_000,
+            gridFraction: 0.66,
+            liveGridHeight: 700,
+            gap: 16,
+            gridMinHeight: 128,
+            levelMinHeight: 200
+        )
+
+        XCTAssertEqual(metrics.gridHeight, 700, accuracy: 0.001)
+        XCTAssertEqual(metrics.levelHeight, 284, accuracy: 0.001)
+    }
+
+    func testSplitMetricsFallsBackToProportionalBoundsWhenViewportIsTooShort() {
+        let lowMetrics = DesktopWorkspaceSplitMetrics(
+            availableHeight: 300,
+            gridFraction: 0,
+            liveGridHeight: nil,
+            gap: 16,
+            gridMinHeight: 128,
+            levelMinHeight: 200
+        )
+        let highMetrics = DesktopWorkspaceSplitMetrics(
+            availableHeight: 300,
+            gridFraction: 1,
+            liveGridHeight: nil,
+            gap: 16,
+            gridMinHeight: 128,
+            levelMinHeight: 200
+        )
+
+        XCTAssertEqual(lowMetrics.contentHeight, 284, accuracy: 0.001)
+        XCTAssertEqual(lowMetrics.gridHeight, 71, accuracy: 0.001)
+        XCTAssertEqual(highMetrics.gridHeight, 213, accuracy: 0.001)
+        XCTAssertEqual(highMetrics.levelHeight, 71, accuracy: 0.001)
+    }
+
+    func testSplitMetricsNormalizedFractionPersistsClampedValue() {
+        let fraction = DesktopWorkspaceSplitMetrics.normalizedGridFraction(
+            gridHeight: 1_000,
+            contentHeight: 984,
+            gridMinHeight: 128,
+            levelMinHeight: 200
+        )
+
+        XCTAssertEqual(fraction, 784.0 / 984.0, accuracy: 0.0001)
+    }
+}
