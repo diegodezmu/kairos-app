@@ -170,33 +170,6 @@ struct LevelLaneConfiguration: Equatable, Sendable {
     }
 }
 
-enum PresetSlot: Int, CaseIterable, Hashable, Sendable {
-    case defaultPreset
-    case custom1
-    case custom2
-    case custom3
-    case custom4
-
-    var displayName: String {
-        switch self {
-        case .defaultPreset:
-            return "Default"
-        case .custom1:
-            return "Preset 1"
-        case .custom2:
-            return "Preset 2"
-        case .custom3:
-            return "Preset 3"
-        case .custom4:
-            return "Preset 4"
-        }
-    }
-
-    var isCustomizable: Bool {
-        self != .defaultPreset
-    }
-}
-
 struct SettingsPreset: Equatable, Sendable {
     var syncSource: SyncSource
     var usbMIDISource: USBMIDISourcePreference
@@ -247,16 +220,32 @@ struct SettingsPreset: Equatable, Sendable {
 }
 
 struct StoredPreset: Equatable, Sendable {
-    var slot: PresetSlot
+    static let defaultID = "default-preset"
+    static let defaultName = "default preset"
+
+    var id: String
+    var name: String
     var settings: SettingsPreset
 
     init(
-        slot: PresetSlot,
+        id: String = UUID().uuidString,
+        name: String,
         settings: SettingsPreset = .factoryDefault
     ) {
-        self.slot = slot
+        self.id = id
+        self.name = name
         self.settings = settings
     }
+
+    var isDefault: Bool {
+        id == Self.defaultID
+    }
+
+    static let factoryDefault = StoredPreset(
+        id: defaultID,
+        name: defaultName,
+        settings: .factoryDefault
+    )
 }
 
 struct PresetLibrary: Equatable, Sendable {
@@ -267,9 +256,7 @@ struct PresetLibrary: Equatable, Sendable {
     }
 
     static let factoryDefault = PresetLibrary(
-        presets: PresetSlot.allCases.map { slot in
-            StoredPreset(slot: slot, settings: .factoryDefault)
-        }
+        presets: SettingsDefaults.factoryPresetLibrary
     )
 }
 
@@ -280,6 +267,150 @@ enum SettingsDefaults {
     static let defaultTargetLevelDB = -12.0
     static let defaultTargetMarginDB = 6.0
     static let defaultHistoryRange: HistoryRange = .thirtySeconds
+    static let factoryPresetLibrary = [
+        StoredPreset.factoryDefault,
+        starterPracticeGridPreset,
+        starterLevelMonitorPreset,
+        starterLinkPerformancePreset,
+    ]
+
+    static let starterPracticeGridPreset = StoredPreset(
+        id: "starter-practice-grid",
+        name: "practice grid",
+        settings: SettingsPreset(
+            syncSource: .internalClock,
+            bpm: 120,
+            isMetronomeEnabled: true,
+            metronomePulse: .oneQuarter,
+            offset: defaultOffset,
+            isGridVisible: true,
+            isLevelVisible: false,
+            gridCycles: [
+                GridCycleSettings(
+                    slot: .one,
+                    isEnabled: true,
+                    name: "Cycle 1",
+                    stepNumber: .sixteen,
+                    pulse: .oneQuarter,
+                    visualMode: .block
+                ),
+                GridCycleSettings(
+                    slot: .two,
+                    isEnabled: true,
+                    name: "Cycle 2",
+                    stepNumber: .eight,
+                    pulse: .one,
+                    visualMode: .border
+                ),
+                defaultGridCycle(for: .three),
+                defaultGridCycle(for: .four),
+            ],
+            levelLanes: LaneID.allCases.map { defaultLevelLane(for: $0) }
+        )
+    )
+
+    static let starterLevelMonitorPreset = StoredPreset(
+        id: "starter-level-monitor",
+        name: "level monitor",
+        settings: SettingsPreset(
+            syncSource: .internalClock,
+            bpm: 120,
+            isMetronomeEnabled: false,
+            metronomePulse: .oneQuarter,
+            offset: defaultOffset,
+            isGridVisible: false,
+            isLevelVisible: true,
+            gridCycles: CycleSlot.allCases.map { defaultGridCycle(for: $0) },
+            levelLanes: [
+                LevelLaneConfiguration(
+                    lane: .one,
+                    isEnabled: true,
+                    name: "Source 1",
+                    targetLevelDB: -12,
+                    targetMarginDB: 6,
+                    historyRange: .thirtySeconds
+                ),
+                LevelLaneConfiguration(
+                    lane: .two,
+                    isEnabled: true,
+                    name: "Source 2",
+                    targetLevelDB: -12,
+                    targetMarginDB: 6,
+                    historyRange: .thirtySeconds
+                ),
+                LevelLaneConfiguration(
+                    lane: .three,
+                    isEnabled: true,
+                    name: "Source 3",
+                    targetLevelDB: -18,
+                    targetMarginDB: 6,
+                    historyRange: .oneMinute
+                ),
+                LevelLaneConfiguration(
+                    lane: .four,
+                    isEnabled: true,
+                    name: "Source 4",
+                    targetLevelDB: -18,
+                    targetMarginDB: 6,
+                    historyRange: .oneMinute
+                ),
+            ]
+        )
+    )
+
+    static let starterLinkPerformancePreset = StoredPreset(
+        id: "starter-link-performance",
+        name: "link performance",
+        settings: SettingsPreset(
+            syncSource: .link,
+            bpm: 128,
+            isMetronomeEnabled: false,
+            metronomePulse: .oneQuarter,
+            offset: defaultOffset,
+            isGridVisible: true,
+            isLevelVisible: true,
+            gridCycles: [
+                GridCycleSettings(
+                    slot: .one,
+                    isEnabled: true,
+                    name: "Cycle 1",
+                    stepNumber: .sixteen,
+                    pulse: .oneQuarter,
+                    visualMode: .block
+                ),
+                GridCycleSettings(
+                    slot: .two,
+                    isEnabled: true,
+                    name: "Cycle 2",
+                    stepNumber: .eight,
+                    pulse: .oneHalf,
+                    visualMode: .line
+                ),
+                defaultGridCycle(for: .three),
+                defaultGridCycle(for: .four),
+            ],
+            levelLanes: [
+                LevelLaneConfiguration(
+                    lane: .one,
+                    isEnabled: true,
+                    name: "Source 1",
+                    targetLevelDB: -12,
+                    targetMarginDB: 6,
+                    historyRange: .thirtySeconds
+                ),
+                LevelLaneConfiguration(
+                    lane: .two,
+                    isEnabled: true,
+                    name: "Source 2",
+                    targetLevelDB: -12,
+                    targetMarginDB: 6,
+                    historyRange: .thirtySeconds
+                ),
+                defaultLevelLane(for: .three),
+                defaultLevelLane(for: .four),
+            ]
+        )
+    )
 
     static func clampedBPM(_ bpm: Int) -> Int {
         min(max(bpm, 1), 999)
@@ -389,13 +520,69 @@ enum SettingsDefaults {
     }
 
     static func normalizeStoredPresets(_ presets: [StoredPreset]) -> [StoredPreset] {
-        let keyedBySlot = Dictionary(
-            presets.map { ($0.slot, $0) },
-            uniquingKeysWith: { _, latest in latest }
-        )
+        var normalizedPresets: [StoredPreset] = []
+        var seenIDs = Set<String>()
 
-        return PresetSlot.allCases.map { slot in
-            keyedBySlot[slot] ?? StoredPreset(slot: slot, settings: .factoryDefault)
+        for preset in presets {
+            let normalizedPreset = StoredPreset(
+                id: preset.id,
+                name: normalizedPresetName(
+                    preset.name,
+                    isDefault: preset.id == StoredPreset.defaultID
+                ),
+                settings: preset.settings
+            )
+
+            if seenIDs.insert(normalizedPreset.id).inserted {
+                normalizedPresets.append(normalizedPreset)
+            }
+        }
+
+        if let defaultIndex = normalizedPresets.firstIndex(where: \.isDefault) {
+            let defaultPreset = normalizedPresets.remove(at: defaultIndex)
+            normalizedPresets.insert(defaultPreset, at: 0)
+        } else {
+            normalizedPresets.insert(.factoryDefault, at: 0)
+        }
+
+        if shouldReplaceLegacyStarterPresets(normalizedPresets) {
+            return factoryPresetLibrary
+        }
+
+        return normalizedPresets
+    }
+
+    private static func normalizedPresetName(
+        _ name: String,
+        isDefault: Bool
+    ) -> String {
+        if isDefault {
+            return StoredPreset.defaultName
+        }
+
+        let trimmedName = name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return trimmedName.isEmpty ? "preset" : trimmedName
+    }
+
+    private static func shouldReplaceLegacyStarterPresets(
+        _ presets: [StoredPreset]
+    ) -> Bool {
+        let legacyPresets = presets.filter { !$0.isDefault }
+        guard presets.count == 5, legacyPresets.count == 4 else {
+            return false
+        }
+
+        let expectedLegacyPresets = [
+            ("legacy-custom-1", "preset 1"),
+            ("legacy-custom-2", "preset 2"),
+            ("legacy-custom-3", "preset 3"),
+            ("legacy-custom-4", "preset 4"),
+        ]
+
+        return zip(legacyPresets, expectedLegacyPresets).allSatisfy { preset, expected in
+            preset.id == expected.0 && preset.name == expected.1
         }
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 import KairosCore
 
 struct PresetLibraryDTO: Codable, Equatable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var presets: [StoredPresetDTO]
@@ -13,18 +13,14 @@ struct PresetLibraryDTO: Codable, Equatable {
     }
 
     func domainModel() throws -> PresetLibrary {
-        guard schemaVersion == Self.currentSchemaVersion else {
+        guard (1 ... Self.currentSchemaVersion).contains(schemaVersion) else {
             throw PresetStoreError.unsupportedSchemaVersion(schemaVersion)
         }
 
-        guard presets.count == PresetSlot.allCases.count else {
-            throw PresetStoreError.invalidPresetCount(actual: presets.count)
-        }
-
         let domainPresets = presets.map(\.domainModel)
-        let uniqueSlots = Set(domainPresets.map(\.slot))
+        let uniquePresetIDs = Set(domainPresets.map(\.id))
 
-        guard uniqueSlots.count == PresetSlot.allCases.count else {
+        guard uniquePresetIDs.count == domainPresets.count else {
             throw PresetStoreError.duplicatePresetSlot
         }
 
@@ -33,17 +29,56 @@ struct PresetLibraryDTO: Codable, Equatable {
 }
 
 struct StoredPresetDTO: Codable, Equatable {
-    var slot: PresetSlotDTO
+    var id: String
+    var name: String
     var settings: SettingsPresetDTO
 
     init(_ preset: StoredPreset) {
-        slot = PresetSlotDTO(preset.slot)
+        id = preset.id
+        name = preset.name
         settings = SettingsPresetDTO(preset.settings)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case settings
+        case slot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        if let id = try container.decodeIfPresent(String.self, forKey: .id) {
+            self.id = id
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+                ?? (id == StoredPreset.defaultID ? StoredPreset.defaultName : "preset")
+        } else {
+            let legacySlot = try container.decode(
+                PresetSlotDTO.self,
+                forKey: .slot
+            )
+            id = legacySlot.presetID
+            name = legacySlot.displayName
+        }
+
+        settings = try container.decode(
+            SettingsPresetDTO.self,
+            forKey: .settings
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(settings, forKey: .settings)
     }
 
     var domainModel: StoredPreset {
         StoredPreset(
-            slot: slot.domainModel,
+            id: id,
+            name: name,
             settings: settings.domainModel
         )
     }
@@ -255,33 +290,33 @@ enum PresetSlotDTO: String, Codable, Equatable {
     case custom3
     case custom4
 
-    init(_ slot: PresetSlot) {
-        switch slot {
+    var presetID: String {
+        switch self {
         case .defaultPreset:
-            self = .defaultPreset
+            return StoredPreset.defaultID
         case .custom1:
-            self = .custom1
+            return "legacy-custom-1"
         case .custom2:
-            self = .custom2
+            return "legacy-custom-2"
         case .custom3:
-            self = .custom3
+            return "legacy-custom-3"
         case .custom4:
-            self = .custom4
+            return "legacy-custom-4"
         }
     }
 
-    var domainModel: PresetSlot {
+    var displayName: String {
         switch self {
         case .defaultPreset:
-            return .defaultPreset
+            return StoredPreset.defaultName
         case .custom1:
-            return .custom1
+            return "preset 1"
         case .custom2:
-            return .custom2
+            return "preset 2"
         case .custom3:
-            return .custom3
+            return "preset 3"
         case .custom4:
-            return .custom4
+            return "preset 4"
         }
     }
 }

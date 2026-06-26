@@ -5,7 +5,7 @@ import KairosCore
 @MainActor
 @Observable
 final class SettingsModel {
-    var activePresetSlot: PresetSlot
+    var activePresetID: String
     var syncSource: SyncSource
     var usbMIDISource: USBMIDISourcePreference
     var linkStatus: LinkStatus
@@ -47,11 +47,11 @@ final class SettingsModel {
     }
 
     init(
-        activePresetSlot: PresetSlot = .defaultPreset,
+        activePresetID: String = StoredPreset.defaultID,
         preset: SettingsPreset = .factoryDefault,
         linkStatus: LinkStatus = .off
     ) {
-        self.activePresetSlot = activePresetSlot
+        self.activePresetID = activePresetID
         self.syncSource = preset.syncSource
         self.usbMIDISource = preset.usbMIDISource
         self.linkStatus = linkStatus
@@ -82,10 +82,10 @@ final class SettingsModel {
 
     func apply(
         _ preset: SettingsPreset,
-        activating slot: PresetSlot? = nil
+        activating presetID: String? = nil
     ) {
-        if let slot {
-            activePresetSlot = slot
+        if let presetID {
+            activePresetID = presetID
         }
 
         syncSource = preset.syncSource
@@ -100,9 +100,13 @@ final class SettingsModel {
         levelLanes = preset.levelLanes
     }
 
-    func makeStoredPreset(for slot: PresetSlot? = nil) -> StoredPreset {
+    func makeStoredPreset(
+        id: String? = nil,
+        name: String
+    ) -> StoredPreset {
         StoredPreset(
-            slot: slot ?? activePresetSlot,
+            id: id ?? activePresetID,
+            name: name,
             settings: preset
         )
     }
