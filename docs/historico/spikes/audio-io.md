@@ -1,3 +1,5 @@
+> ARCHIVADO — referencia histórica, NO es estado vivo del proyecto.
+
 # F0-3 — Spike de entrada de audio BlackHole + RMS RT
 
 ## Respuesta corta

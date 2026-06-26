@@ -1,3 +1,5 @@
+> ARCHIVADO — referencia histórica, NO es estado vivo del proyecto.
+
 # BlackHole 16ch + routing desde Ableton
 
 > Legacy / fallback: esta guia documenta el spike original con `BlackHole`, pero ya no es la via principal para `Level` en KAIROS. El flujo recomendado para uso real esta en `docs/setup/level-max-for-live.md`.

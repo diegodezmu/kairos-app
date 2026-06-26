@@ -1,3 +1,5 @@
+> ARCHIVADO — referencia histórica, NO es estado vivo del proyecto.
+
 # Evolución de la app a móvil 
 
 
