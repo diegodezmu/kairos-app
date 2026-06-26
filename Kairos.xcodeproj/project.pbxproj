@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -34,11 +34,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		F10000000000000000000005 /* Kairos */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Kairos;
-			sourceTree = "<group>";
-		};
+		F10000000000000000000005 /* Kairos */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Kairos; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -176,7 +172,7 @@
 			mainGroup = F10000000000000000000002;
 			packageReferences = (
 				F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */,
-				F10000000000000000000093 /* XCLocalSwiftPackageReference "KairosLinkSDK" */,
+				F10000000000000000000093 /* XCLocalSwiftPackageReference "Packages/KairosLinkSDK" */,
 			);
 			productRefGroup = F10000000000000000000003 /* Products */;
 			projectDirPath = "";
@@ -231,17 +227,6 @@
 			targetProxy = F10000000000000000000062 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = KairosCore;
-		};
-		F10000000000000000000093 /* XCLocalSwiftPackageReference "KairosLinkSDK" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/KairosLinkSDK;
-		};
-/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
 		F10000000000000000000080 /* Debug */ = {
@@ -378,6 +363,17 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		F10000000000000000000090 /* XCLocalSwiftPackageReference "KairosCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = KairosCore;
+		};
+		F10000000000000000000093 /* XCLocalSwiftPackageReference "Packages/KairosLinkSDK" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/KairosLinkSDK;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		F10000000000000000000091 /* KairosCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -391,7 +387,7 @@
 		};
 		F10000000000000000000094 /* KairosLinkSDK */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F10000000000000000000093 /* XCLocalSwiftPackageReference "KairosLinkSDK" */;
+			package = F10000000000000000000093 /* XCLocalSwiftPackageReference "Packages/KairosLinkSDK" */;
 			productName = KairosLinkSDK;
 		};
 /* End XCSwiftPackageProductDependency section */
