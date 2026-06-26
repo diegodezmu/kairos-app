@@ -1,3 +1,5 @@
+> ARCHIVADO — referencia histórica, NO es estado vivo del proyecto.
+
 Audio:
 
     Devices:
@@ -38,4 +40,3 @@ Audio:
           Current SampleRate: 48000
           Transport: Built-in
           Output Source: Altavoces del MacBook Pro
-

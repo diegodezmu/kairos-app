@@ -1,3 +1,5 @@
+> ARCHIVADO — referencia histórica, NO es estado vivo del proyecto.
+
 #!/usr/bin/env bash
 
 set -euo pipefail
