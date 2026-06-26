@@ -7,26 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F10000000000000000000030 /* KairosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000013 /* KairosApp.swift */; };
-		F10000000000000000000031 /* GridRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000014 /* GridRenderer.swift */; };
 		F10000000000000000000032 /* KairosCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000091 /* KairosCore */; };
-		F10000000000000000000033 /* LevelRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000015 /* LevelRenderer.swift */; };
-		F10000000000000000000034 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000016 /* AppSettings.swift */; };
-		F10000000000000000000035 /* SettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000017 /* SettingsModel.swift */; };
-		F10000000000000000000036 /* PresetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000018 /* PresetStore.swift */; };
-		F10000000000000000000037 /* PresetStoreDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000019 /* PresetStoreDTOs.swift */; };
 		F10000000000000000000038 /* PresetStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001A /* PresetStoreTests.swift */; };
 		F10000000000000000000039 /* KairosCore in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000092 /* KairosCore */; };
 		F1000000000000000000003A /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001C /* XCTest.framework */; };
-		F1000000000000000000003B /* DesktopShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001D /* DesktopShell.swift */; };
-		F1000000000000000000003C /* LevelTelemetryReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001E /* LevelTelemetryReceiver.swift */; };
-		F1000000000000000000003D /* LevelRuntimeDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000001F /* LevelRuntimeDriver.swift */; };
 		F1000000000000000000003E /* LevelTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000020 /* LevelTelemetryTests.swift */; };
 		F10000000000000000000040 /* KairosLinkSDK in Frameworks */ = {isa = PBXBuildFile; productRef = F10000000000000000000094 /* KairosLinkSDK */; };
-		F10000000000000000000041 /* AbletonLinkBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000022 /* AbletonLinkBridge.swift */; };
-		F10000000000000000000042 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000023 /* Assets.xcassets */; };
-		F10000000000000000000043 /* USBMIDISyncBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000024 /* USBMIDISyncBridge.swift */; };
-		F10000000000000000000044 /* MetronomeClickEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000025 /* MetronomeClickEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,24 +28,18 @@
 /* Begin PBXFileReference section */
 		F10000000000000000000010 /* Kairos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kairos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F10000000000000000000011 /* KairosTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KairosTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		F10000000000000000000013 /* KairosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KairosApp.swift; sourceTree = "<group>"; };
-		F10000000000000000000014 /* GridRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridRenderer.swift; sourceTree = "<group>"; };
-		F10000000000000000000015 /* LevelRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LevelRenderer.swift; sourceTree = "<group>"; };
-		F10000000000000000000016 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		F10000000000000000000017 /* SettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsModel.swift; sourceTree = "<group>"; };
-		F10000000000000000000018 /* PresetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStore.swift; sourceTree = "<group>"; };
-		F10000000000000000000019 /* PresetStoreDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStoreDTOs.swift; sourceTree = "<group>"; };
 		F1000000000000000000001A /* PresetStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetStoreTests.swift; sourceTree = "<group>"; };
 		F1000000000000000000001C /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
-		F1000000000000000000001D /* DesktopShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopShell.swift; sourceTree = "<group>"; };
-		F1000000000000000000001E /* LevelTelemetryReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LevelTelemetryReceiver.swift; sourceTree = "<group>"; };
-		F1000000000000000000001F /* LevelRuntimeDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LevelRuntimeDriver.swift; sourceTree = "<group>"; };
 		F10000000000000000000020 /* LevelTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LevelTelemetryTests.swift; sourceTree = "<group>"; };
-		F10000000000000000000022 /* AbletonLinkBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbletonLinkBridge.swift; sourceTree = "<group>"; };
-		F10000000000000000000023 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		F10000000000000000000024 /* USBMIDISyncBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBMIDISyncBridge.swift; sourceTree = "<group>"; };
-		F10000000000000000000025 /* MetronomeClickEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetronomeClickEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		F10000000000000000000005 /* Kairos */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Kairos;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		F10000000000000000000051 /* Frameworks */ = {
@@ -102,27 +82,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		F10000000000000000000005 /* Kairos */ = {
-			isa = PBXGroup;
-			children = (
-				F10000000000000000000013 /* KairosApp.swift */,
-				F10000000000000000000016 /* AppSettings.swift */,
-				F10000000000000000000017 /* SettingsModel.swift */,
-				F10000000000000000000018 /* PresetStore.swift */,
-				F10000000000000000000019 /* PresetStoreDTOs.swift */,
-				F1000000000000000000001D /* DesktopShell.swift */,
-				F1000000000000000000001E /* LevelTelemetryReceiver.swift */,
-				F1000000000000000000001F /* LevelRuntimeDriver.swift */,
-				F10000000000000000000022 /* AbletonLinkBridge.swift */,
-				F10000000000000000000024 /* USBMIDISyncBridge.swift */,
-				F10000000000000000000025 /* MetronomeClickEngine.swift */,
-				F10000000000000000000014 /* GridRenderer.swift */,
-				F10000000000000000000015 /* LevelRenderer.swift */,
-				F10000000000000000000023 /* Assets.xcassets */,
-			);
-			path = Kairos;
-			sourceTree = "<group>";
-		};
 		F10000000000000000000006 /* KairosTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -154,6 +113,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F10000000000000000000005 /* Kairos */,
 			);
 			name = Kairos;
 			packageProductDependencies = (
@@ -231,7 +193,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F10000000000000000000042 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -249,19 +210,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F10000000000000000000030 /* KairosApp.swift in Sources */,
-				F10000000000000000000034 /* AppSettings.swift in Sources */,
-				F10000000000000000000035 /* SettingsModel.swift in Sources */,
-				F10000000000000000000036 /* PresetStore.swift in Sources */,
-				F10000000000000000000037 /* PresetStoreDTOs.swift in Sources */,
-				F1000000000000000000003B /* DesktopShell.swift in Sources */,
-				F1000000000000000000003C /* LevelTelemetryReceiver.swift in Sources */,
-				F1000000000000000000003D /* LevelRuntimeDriver.swift in Sources */,
-				F10000000000000000000041 /* AbletonLinkBridge.swift in Sources */,
-				F10000000000000000000043 /* USBMIDISyncBridge.swift in Sources */,
-				F10000000000000000000044 /* MetronomeClickEngine.swift in Sources */,
-				F10000000000000000000031 /* GridRenderer.swift in Sources */,
-				F10000000000000000000033 /* LevelRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
