@@ -165,8 +165,17 @@ final class DesktopShellModel {
         return .waiting("Select USB MIDI input")
     }
 
+    var activePreset: StoredPreset {
+        presetLibrary.storedPreset(for: settings.activePresetID)
+            ?? presetLibrary.defaultPreset
+    }
+
+    var availablePresets: [StoredPreset] {
+        presetLibrary.presets.filter { $0.id != activePreset.id }
+    }
+
     var activePresetToolbarLabel: String {
-        settings.activePresetSlot.toolbarLabel
+        activePreset.name
     }
 
     func loadPresets() async {
@@ -179,12 +188,12 @@ final class DesktopShellModel {
             let library = try await presetStore.loadPresets()
             presetLibrary = library
 
-            if let storedPreset = library.storedPreset(for: settings.activePresetSlot) {
-                settings.apply(
-                    storedPreset.settings,
-                    activating: storedPreset.slot
-                )
-            }
+            let storedPreset = library.storedPreset(for: settings.activePresetID)
+                ?? library.defaultPreset
+            settings.apply(
+                storedPreset.settings,
+                activating: storedPreset.id
+            )
 
             synchronizeUSBSourceSelection()
             synchronizeTransportState()
@@ -196,41 +205,110 @@ final class DesktopShellModel {
         }
     }
 
-    func saveCurrentPreset(to slot: PresetSlot? = nil) async {
-        let targetSlot = slot ?? settings.activePresetSlot
-        settings.activePresetSlot = targetSlot
-
+    func saveCurrentPreset() async {
+        let targetPreset = activePreset
         var updatedLibrary = presetLibrary
         updatedLibrary.replace(
-            preset: settings.makeStoredPreset(for: targetSlot)
+            preset: settings.makeStoredPreset(
+                id: targetPreset.id,
+                name: targetPreset.name
+            )
         )
 
-        do {
-            if let presetStore {
-                try await presetStore.savePresets(updatedLibrary)
-            }
-            presetLibrary = updatedLibrary
-            storageErrorMessage = nil
-        } catch {
-            storageErrorMessage = "Current preset could not be saved."
+        _ = await persistPresetLibrary(
+            updatedLibrary,
+            errorMessage: "Current preset could not be saved."
+        )
+    }
+
+    func addPreset() async {
+        let newPreset = StoredPreset(
+            name: nextCustomPresetName(),
+            settings: settings.preset
+        )
+        var updatedLibrary = presetLibrary
+        updatedLibrary.append(preset: newPreset)
+
+        guard await persistPresetLibrary(
+            updatedLibrary,
+            errorMessage: "New preset could not be created."
+        ) else {
+            return
+        }
+
+        settings.activePresetID = newPreset.id
+    }
+
+    func renamePreset(
+        _ presetID: String,
+        to proposedName: String
+    ) async {
+        guard let storedPreset = presetLibrary.storedPreset(for: presetID) else {
+            return
+        }
+
+        guard !storedPreset.isDefault else {
+            return
+        }
+
+        let trimmedName = proposedName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmedName.isEmpty else {
+            return
+        }
+
+        var renamedPreset = storedPreset
+        renamedPreset.name = trimmedName
+
+        var updatedLibrary = presetLibrary
+        updatedLibrary.replace(preset: renamedPreset)
+
+        _ = await persistPresetLibrary(
+            updatedLibrary,
+            errorMessage: "Preset name could not be updated."
+        )
+    }
+
+    func removePreset(_ presetID: String) async {
+        guard let storedPreset = presetLibrary.storedPreset(for: presetID) else {
+            return
+        }
+
+        guard !storedPreset.isDefault else {
+            return
+        }
+
+        var updatedLibrary = presetLibrary
+        updatedLibrary.removePreset(id: presetID)
+
+        guard await persistPresetLibrary(
+            updatedLibrary,
+            errorMessage: "Preset could not be removed."
+        ) else {
+            return
+        }
+
+        if settings.activePresetID == presetID {
+            selectPreset(updatedLibrary.defaultPreset.id, at: currentDate())
         }
     }
 
-    func selectPreset(_ slot: PresetSlot) {
-        selectPreset(slot, at: currentDate())
+    func selectPreset(_ presetID: String) {
+        selectPreset(presetID, at: currentDate())
     }
 
     private func selectPreset(
-        _ slot: PresetSlot,
+        _ presetID: String,
         at date: Date
     ) {
-        guard let storedPreset = presetLibrary.storedPreset(for: slot) else {
+        guard let storedPreset = presetLibrary.storedPreset(for: presetID) else {
             return
         }
 
         settings.apply(
             storedPreset.settings,
-            activating: slot
+            activating: presetID
         )
         synchronizeUSBSourceSelection()
         synchronizeTransportState()
@@ -276,6 +354,40 @@ final class DesktopShellModel {
         levelRuntimeDriver.reset()
         refreshLevelSidebarState(at: date)
         refreshMetronomeScheduling(at: date, reset: true)
+    }
+
+    private func persistPresetLibrary(
+        _ library: PresetLibrary,
+        errorMessage: String
+    ) async -> Bool {
+        do {
+            if let presetStore {
+                try await presetStore.savePresets(library)
+            }
+            presetLibrary = library
+            storageErrorMessage = nil
+            return true
+        } catch {
+            storageErrorMessage = errorMessage
+            return false
+        }
+    }
+
+    private func nextCustomPresetName() -> String {
+        let existingNames = Set(
+            presetLibrary.presets.map {
+                $0.name.lowercased()
+            }
+        )
+
+        var index = 1
+        while true {
+            let candidate = "preset \(index)"
+            if !existingNames.contains(candidate) {
+                return candidate
+            }
+            index += 1
+        }
     }
 
     func setSyncSource(_ source: SyncSource) {
@@ -1358,25 +1470,38 @@ struct DesktopShellRootView: View {
 
 private struct DesktopShellView: View {
     let model: DesktopShellModel
+    @State private var dropdownCoordinator = FloatingDropdownCoordinator()
 
     var body: some View {
-        VStack(spacing: 0) {
-            DesktopToolbarView(model: model)
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                DesktopToolbarView(model: model)
 
-            HStack(spacing: 0) {
-                if model.isSidebarVisible {
-                    DesktopSidebarWrapper {
-                        DesktopSidebarView(model: model)
+                HStack(spacing: 0) {
+                    if model.isSidebarVisible {
+                        DesktopSidebarWrapper {
+                            DesktopSidebarView(model: model)
+                        }
                     }
-                }
 
-                DesktopWorkspaceLiveView(model: model)
+                    DesktopWorkspaceLiveView(model: model)
+                }
+                // No top padding here: the toolbar already provides the gap below it.
+                // Adding it again would double the canvas-colored space.
+                .padding(.trailing, DesktopShellTokens.layoutGapLG)
+                .padding(.bottom, DesktopShellTokens.layoutGapLG)
             }
-            // No top padding here: the toolbar already provides the gap below it.
-            // Adding it again would double the canvas-colored space.
-            .padding(.trailing, DesktopShellTokens.layoutGapLG)
-            .padding(.bottom, DesktopShellTokens.layoutGapLG)
+
+            if let presentation = dropdownCoordinator.presentation {
+                FloatingDropdownOverlay(
+                    presentation: presentation,
+                    onDismiss: dropdownCoordinator.dismiss
+                )
+                .zIndex(10_000)
+            }
         }
+        .coordinateSpace(name: DesktopShellTokens.shellCoordinateSpace)
+        .environment(\.floatingDropdownCoordinator, dropdownCoordinator)
         .background(DesktopShellTokens.backgroundCanvas)
     }
 }
@@ -1395,14 +1520,29 @@ private struct DesktopToolbarView: View {
                         .foregroundStyle(DesktopShellTokens.textTertiary)
 
                     PresetSelectorButton(
-                        title: model.activePresetToolbarLabel,
-                        activeSlot: model.settings.activePresetSlot,
-                        onSelect: { slot in
-                            model.selectPreset(slot)
+                        activePreset: model.activePreset,
+                        presets: model.availablePresets,
+                        onSelect: { presetID in
+                            model.selectPreset(presetID)
                         },
-                        onSave: { slot in
+                        onSave: {
                             Task {
-                                await model.saveCurrentPreset(to: slot)
+                                await model.saveCurrentPreset()
+                            }
+                        },
+                        onAdd: {
+                            Task {
+                                await model.addPreset()
+                            }
+                        },
+                        onRename: { presetID, name in
+                            Task {
+                                await model.renamePreset(presetID, to: name)
+                            }
+                        },
+                        onRemove: { presetID in
+                            Task {
+                                await model.removePreset(presetID)
                             }
                         }
                     )
@@ -1686,10 +1826,11 @@ private struct GlobalSidebarSection: View {
                             MenuValueButton(
                                 title: model.settings.metronomePulse.displayLabel,
                                 icon: .chevronDown
-                            ) {
+                            ) { dismiss in
                                 ForEach(DesktopShellFormatters.metronomePulseOptions, id: \.self) { option in
                                     Button(option.title) {
                                         model.setMetronomePulse(option.value)
+                                        dismiss()
                                     }
                                 }
                             }
@@ -1698,13 +1839,13 @@ private struct GlobalSidebarSection: View {
                 }
             }
             .padding(.horizontal, DesktopShellTokens.layoutGapLG)
-            .background(DesktopShellTokens.backgroundElevated)
-            .clipShape(
+            .background {
                 RoundedRectangle(
                     cornerRadius: DesktopShellTokens.radiusCanvas,
                     style: .continuous
                 )
-            )
+                .fill(DesktopShellTokens.backgroundElevated)
+            }
 
             if let storageErrorMessage = model.storageErrorMessage {
                 Text(storageErrorMessage)
@@ -1766,13 +1907,13 @@ private struct GridSidebarSection: View {
             // Card supplies the horizontal inset; each cycle owns its vertical
             // padding (Figma `cycle` p-16 + container gap-8 → 24px to each divider).
             .padding(.horizontal, DesktopShellTokens.layoutGapLG)
-            .background(DesktopShellTokens.backgroundElevated)
-            .clipShape(
+            .background {
                 RoundedRectangle(
                     cornerRadius: DesktopShellTokens.radiusCanvas,
                     style: .continuous
                 )
-            )
+                .fill(DesktopShellTokens.backgroundElevated)
+            }
         }
     }
 }
@@ -1808,10 +1949,11 @@ private struct GridCycleCard: View {
                         MenuValueButton(
                             title: cycle.stepNumber.displayLabel,
                             icon: .chevronDown
-                        ) {
+                        ) { dismiss in
                             ForEach(StepNumber.allCases, id: \.self) { stepNumber in
                                 Button(stepNumber.displayLabel) {
                                     onStepNumber(stepNumber)
+                                    dismiss()
                                 }
                             }
                         }
@@ -1821,10 +1963,11 @@ private struct GridCycleCard: View {
                         MenuValueButton(
                             title: cycle.pulse.displayLabel,
                             icon: .chevronDown
-                        ) {
+                        ) { dismiss in
                             ForEach(Pulse.allCases, id: \.self) { pulse in
                                 Button(pulse.displayLabel) {
                                     onPulse(pulse)
+                                    dismiss()
                                 }
                             }
                         }
@@ -1895,13 +2038,13 @@ private struct LevelSidebarSection: View {
                 }
             }
             .padding(.horizontal, DesktopShellTokens.layoutGapLG)
-            .background(DesktopShellTokens.backgroundElevated)
-            .clipShape(
+            .background {
                 RoundedRectangle(
                     cornerRadius: DesktopShellTokens.radiusCanvas,
                     style: .continuous
                 )
-            )
+                .fill(DesktopShellTokens.backgroundElevated)
+            }
         }
     }
 }
@@ -1943,13 +2086,13 @@ private struct LevelTelemetryStatusView: View {
             }
         }
         .padding(DesktopShellTokens.layoutGapLG)
-        .background(DesktopShellTokens.backgroundElevated)
-        .clipShape(
+        .background {
             RoundedRectangle(
                 cornerRadius: DesktopShellTokens.radiusCanvas,
                 style: .continuous
             )
-        )
+            .fill(DesktopShellTokens.backgroundElevated)
+        }
     }
 
     private var statusColor: Color {
@@ -2004,10 +2147,12 @@ private struct LevelLaneCard: View {
                     SidebarValueRow(label: "Source") {
                         MenuValueButton(
                             title: selectedSourceTitle,
-                            icon: .chevronDown
-                        ) {
+                            icon: .chevronDown,
+                            maxTitleWidth: 200
+                        ) { dismiss in
                             Button("Unassigned") {
                                 onSourceSelection(nil, nil)
+                                dismiss()
                             }
 
                             if telemetry.sources.isEmpty {
@@ -2021,6 +2166,7 @@ private struct LevelLaneCard: View {
                                         source.sourceSlot,
                                         source.sourceName
                                     )
+                                    dismiss()
                                 }
                             }
                         }
@@ -2054,10 +2200,11 @@ private struct LevelLaneCard: View {
                         MenuValueButton(
                             title: lane.historyRange.displayLabel,
                             icon: .chevronDown
-                        ) {
+                        ) { dismiss in
                             ForEach(HistoryRange.allCases, id: \.self) { historyRange in
                                 Button(historyRange.displayLabel) {
                                     onHistoryRange(historyRange)
+                                    dismiss()
                                 }
                             }
                         }
@@ -2077,15 +2224,95 @@ private struct LevelLaneCard: View {
     }
 }
 
+struct DesktopWorkspaceSplitMetrics: Equatable {
+    let availableHeight: CGFloat
+    let gap: CGFloat
+    let contentHeight: CGFloat
+    let gridHeight: CGFloat
+    let levelHeight: CGFloat
+    let dividerCenterY: CGFloat
+
+    init(
+        availableHeight: CGFloat,
+        gridFraction: Double,
+        liveGridHeight: CGFloat?,
+        gap: CGFloat,
+        gridMinHeight: CGFloat,
+        levelMinHeight: CGFloat
+    ) {
+        let resolvedAvailableHeight = max(availableHeight, 1)
+        let resolvedGap = max(gap, 0)
+        let resolvedContentHeight = max(resolvedAvailableHeight - resolvedGap, 1)
+        let proposedGridHeight = liveGridHeight
+            ?? resolvedContentHeight * CGFloat(gridFraction)
+        let resolvedGridHeight = Self.clampGridHeight(
+            proposedGridHeight,
+            contentHeight: resolvedContentHeight,
+            gridMinHeight: gridMinHeight,
+            levelMinHeight: levelMinHeight
+        )
+
+        self.availableHeight = resolvedAvailableHeight
+        self.gap = resolvedGap
+        self.contentHeight = resolvedContentHeight
+        self.gridHeight = resolvedGridHeight
+        self.levelHeight = max(resolvedContentHeight - resolvedGridHeight, 1)
+        self.dividerCenterY = resolvedGridHeight + (resolvedGap / 2)
+    }
+
+    static func clampGridHeight(
+        _ proposed: CGFloat,
+        contentHeight: CGFloat,
+        gridMinHeight: CGFloat,
+        levelMinHeight: CGFloat
+    ) -> CGFloat {
+        let resolvedContentHeight = max(contentHeight, 1)
+        let lowerBound = max(gridMinHeight, 0)
+        let upperBound = resolvedContentHeight - max(levelMinHeight, 0)
+
+        guard lowerBound <= upperBound else {
+            return min(
+                max(proposed, resolvedContentHeight * 0.25),
+                resolvedContentHeight * 0.75
+            )
+        }
+
+        return min(max(proposed, lowerBound), upperBound)
+    }
+
+    static func normalizedGridFraction(
+        gridHeight: CGFloat,
+        contentHeight: CGFloat,
+        gridMinHeight: CGFloat,
+        levelMinHeight: CGFloat
+    ) -> Double {
+        let resolvedContentHeight = max(contentHeight, 1)
+        let resolvedGridHeight = clampGridHeight(
+            gridHeight,
+            contentHeight: resolvedContentHeight,
+            gridMinHeight: gridMinHeight,
+            levelMinHeight: levelMinHeight
+        )
+        return Double(resolvedGridHeight / resolvedContentHeight)
+    }
+}
+
 private struct DesktopWorkspaceLiveView: View {
     let model: DesktopShellModel
 
     /// Fraction of the available height assigned to the Grid panel when Grid and
     /// Level are stacked. Persisted across launches; clamped by the Figma panel
-    /// min-height tokens (`component/panel/grid-min-height` = 560,
-    /// `component/panel/level-min-height` = 280).
+    /// min-height tokens (`component/panel/grid-min-height` = 128,
+    /// `component/panel/level-min-height` = 200).
     @AppStorage("kairos.workspace.gridFraction") private var gridFraction: Double = 0.66
+    /// Grid height captured the moment a resize drag begins. The drag is measured
+    /// against this fixed baseline (plus the cursor delta) so the split tracks the
+    /// pointer 1:1 instead of compounding as the divider repositions.
     @State private var dragStartGridHeight: CGFloat?
+    /// Live Grid height while a drag is in flight. Driving the drag through a
+    /// transient @State — instead of writing @AppStorage on every frame — keeps the
+    /// motion smooth and persists the fraction only once, on release.
+    @State private var liveGridHeight: CGFloat?
 
     var body: some View {
         // The split layout and the resize divider live OUTSIDE the per-renderer
@@ -2093,34 +2320,76 @@ private struct DesktopWorkspaceLiveView: View {
         // that drives the meters. Each surface owns its own TimelineView for the
         // live content.
         GeometryReader { geometry in
-            let available = max(geometry.size.height, 1)
+            let gap = DesktopShellTokens.layoutGapLG
+            let gridMinHeight = DesktopShellTokens.gridPanelMinHeight
+            let levelMinHeight = DesktopShellTokens.levelPanelMinHeight
+            let splitMetrics = DesktopWorkspaceSplitMetrics(
+                availableHeight: geometry.size.height,
+                gridFraction: gridFraction,
+                liveGridHeight: liveGridHeight,
+                gap: gap,
+                gridMinHeight: gridMinHeight,
+                levelMinHeight: levelMinHeight
+            )
 
-            VStack(spacing: 0) {
+            Group {
                 if model.settings.isGridVisible, model.settings.isLevelVisible {
-                    let gap = DesktopShellTokens.layoutGapLG
-                    let content = max(available - gap, 1)
-                    let gridHeight = resolvedGridHeight(forContent: content)
-                    let levelHeight = max(content - gridHeight, 1)
+                    ZStack(alignment: .topLeading) {
+                        gridSurface
+                            .frame(
+                                width: geometry.size.width,
+                                height: splitMetrics.gridHeight,
+                                alignment: .topLeading
+                            )
 
-                    gridSurface
-                        .frame(height: gridHeight)
+                        levelSplitSurface
+                            .frame(
+                                width: geometry.size.width,
+                                height: splitMetrics.levelHeight,
+                                alignment: .topLeading
+                            )
+                            .offset(y: splitMetrics.gridHeight + splitMetrics.gap)
 
-                    WorkspaceResizeDivider(
-                        height: gap,
-                        onChanged: { translation in
-                            if dragStartGridHeight == nil {
-                                dragStartGridHeight = gridHeight
+                        WorkspaceResizeDivider(
+                            width: geometry.size.width,
+                            centerY: splitMetrics.dividerCenterY,
+                            onChanged: { delta in
+                                let base = dragStartGridHeight ?? splitMetrics.gridHeight
+                                liveGridHeight = DesktopWorkspaceSplitMetrics.clampGridHeight(
+                                    base + delta,
+                                    contentHeight: splitMetrics.contentHeight,
+                                    gridMinHeight: gridMinHeight,
+                                    levelMinHeight: levelMinHeight
+                                )
+                            },
+                            onBegan: {
+                                // Capture the baseline the instant the drag
+                                // starts, so the first delta is measured from
+                                // exactly here.
+                                dragStartGridHeight = splitMetrics.gridHeight
+                                liveGridHeight = splitMetrics.gridHeight
+                            },
+                            onEnded: {
+                                if let live = liveGridHeight {
+                                    gridFraction = DesktopWorkspaceSplitMetrics
+                                        .normalizedGridFraction(
+                                            gridHeight: live,
+                                            contentHeight: splitMetrics.contentHeight,
+                                            gridMinHeight: gridMinHeight,
+                                            levelMinHeight: levelMinHeight
+                                        )
+                                }
+                                liveGridHeight = nil
+                                dragStartGridHeight = nil
                             }
-                            let proposed = (dragStartGridHeight ?? gridHeight) + translation
-                            gridFraction = Double(clampGridHeight(proposed, content: content) / content)
-                        },
-                        onEnded: {
-                            dragStartGridHeight = nil
-                        }
-                    )
-
-                    levelSplitSurface
-                        .frame(height: levelHeight)
+                        )
+                        .frame(
+                            width: geometry.size.width,
+                            height: geometry.size.height,
+                            alignment: .topLeading
+                        )
+                        .zIndex(1)
+                    }
                 } else if model.settings.isGridVisible {
                     gridSurface
                         .frame(maxHeight: .infinity)
@@ -2139,29 +2408,6 @@ private struct DesktopWorkspaceLiveView: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    /// Grid height honoring the persisted fraction, clamped to the Figma min
-    /// heights. If the viewport is too short to satisfy both minimums, fall back
-    /// to a proportional split so the layout never breaks.
-    private func resolvedGridHeight(forContent content: CGFloat) -> CGFloat {
-        clampGridHeight(content * CGFloat(gridFraction), content: content)
-    }
-
-    private func clampGridHeight(_ proposed: CGFloat, content: CGFloat) -> CGFloat {
-        let gridMin = DesktopShellTokens.gridPanelMinHeight
-        let levelMin = DesktopShellTokens.levelPanelMinHeight
-        let upperBound = content - levelMin
-
-        // When the viewport is tall enough, honor the exact Figma panel min
-        // heights. On viewports too short to fit both (e.g. a laptop display),
-        // keep the resize interactive within a safe band so neither panel
-        // collapses, instead of locking the split.
-        guard gridMin <= upperBound else {
-            return min(max(proposed, content * 0.25), content * 0.75)
-        }
-
-        return min(max(proposed, gridMin), upperBound)
     }
 
     private var gridSurface: some View {
@@ -2219,50 +2465,182 @@ private struct DesktopWorkspaceLiveView: View {
     }
 }
 
+/// Splitter between the Grid and Level surfaces.
+///
+/// The interactive layer is an AppKit `NSView` (`ResizeHandleRepresentable`)
+/// rather than a SwiftUI gesture, because a professional splitter needs two
+/// guarantees SwiftUI gestures do not give reliably:
+///   1. A resize cursor that always appears and never sticks — driven by an
+///      `NSTrackingArea` `cursorUpdate`, the same mechanism AppKit uses for its
+///      own divider cursors.
+///   2. A drag that cannot be lost on fast pointer moves — native `mouseDown` →
+///      `mouseDragged` → `mouseUp` get automatic mouse capture, so every event
+///      is delivered to the handle until the button is released.
+///
+/// The handle is transparent; the visible grabber is drawn in SwiftUI beneath it
+/// and brightens on hover/drag. The drag delta is measured against the pointer
+/// position captured at `mouseDown` (in window coordinates), so it tracks the
+/// cursor 1:1 and never feeds back as the divider repositions during the resize.
 private struct WorkspaceResizeDivider: View {
-    let height: CGFloat
+    let width: CGFloat
+    let centerY: CGFloat
+    /// Reports the baseline-relative drag distance in points (positive = drag
+    /// down, i.e. grow Grid), measured from the `mouseDown` location.
     let onChanged: (CGFloat) -> Void
+    /// Fires once at `mouseDown`, before any movement, so the parent can capture
+    /// the Grid height baseline with zero delta (no jump at drag start).
+    let onBegan: () -> Void
     let onEnded: () -> Void
 
     @State private var isHovering = false
+    @State private var isDragging = false
 
     var body: some View {
-        // The Figma reference shows only the 16px gap between Grid and Level
-        // (no visible rule). The visible band stays at `height`, but the hit area
-        // and resize cursor extend a few points into each panel via an overlay so
-        // the separator is easy to find and grab.
-        Color.clear
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .overlay {
-                ZStack {
-                    Color.clear
-                    Capsule(style: .continuous)
-                        .fill(DesktopShellTokens.borderDefault)
-                        .frame(width: 36, height: 4)
-                        .opacity(isHovering ? 1 : 0)
+        ZStack(alignment: .topLeading) {
+            // Subtle grabber: invisible at rest, brightening while the pointer
+            // is over the strip or a resize is in flight.
+            Capsule(style: .continuous)
+                .fill(DesktopShellTokens.textTertiary)
+                .frame(width: 36, height: 4)
+                .opacity(isHovering || isDragging ? 0.9 : 0)
+                .animation(.easeOut(duration: 0.12), value: isHovering)
+                .animation(.easeOut(duration: 0.12), value: isDragging)
+                .position(x: width / 2, y: centerY)
+                .allowsHitTesting(false)
+
+            ResizeHandleRepresentable(
+                onHoverChange: { isHovering = $0 },
+                onBegan: {
+                    isDragging = true
+                    onBegan()
+                },
+                onChanged: onChanged,
+                onEnded: {
+                    isDragging = false
+                    onEnded()
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: height + 18)
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    isHovering = hovering
-                    if hovering {
-                        NSCursor.resizeUpDown.push()
-                    } else {
-                        NSCursor.pop()
-                    }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 1)
-                        .onChanged { value in
-                            onChanged(value.translation.height)
-                        }
-                        .onEnded { _ in
-                            onEnded()
-                        }
+            )
+            .frame(
+                width: width,
+                height: DesktopShellTokens.resizeDividerHitHeight
+            )
+            .position(x: width / 2, y: centerY)
+        }
+    }
+}
+
+/// AppKit-backed splitter handle. Owns the resize cursor and the drag loop; see
+/// `WorkspaceResizeDivider` for why this is native rather than a SwiftUI gesture.
+private struct ResizeHandleRepresentable: NSViewRepresentable {
+    let onHoverChange: (Bool) -> Void
+    let onBegan: () -> Void
+    let onChanged: (CGFloat) -> Void
+    let onEnded: () -> Void
+
+    func makeNSView(context: Context) -> HandleView {
+        let view = HandleView()
+        view.apply(onHoverChange: onHoverChange, onBegan: onBegan, onChanged: onChanged, onEnded: onEnded)
+        return view
+    }
+
+    func updateNSView(_ nsView: HandleView, context: Context) {
+        nsView.apply(onHoverChange: onHoverChange, onBegan: onBegan, onChanged: onChanged, onEnded: onEnded)
+    }
+
+    final class HandleView: NSView {
+        private var onHoverChange: ((Bool) -> Void)?
+        private var onBegan: (() -> Void)?
+        private var onChanged: ((CGFloat) -> Void)?
+        private var onEnded: (() -> Void)?
+        private var isDragging = false
+
+        /// Pointer Y (window coordinates) captured at `mouseDown`. Window space
+        /// has its origin at the bottom-left with Y increasing upward, so a
+        /// downward drag lowers Y — hence the `start - current` delta below maps a
+        /// downward drag to a positive value (grow Grid).
+        private var dragStartY: CGFloat = 0
+
+        func apply(
+            onHoverChange: @escaping (Bool) -> Void,
+            onBegan: @escaping () -> Void,
+            onChanged: @escaping (CGFloat) -> Void,
+            onEnded: @escaping () -> Void
+        ) {
+            self.onHoverChange = onHoverChange
+            self.onBegan = onBegan
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+        }
+
+        // Let the splitter respond on the first click even when the window is not
+        // yet key, matching native desktop-app behaviour.
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            bounds.contains(point) ? self : nil
+        }
+
+        override func layout() {
+            super.layout()
+            window?.invalidateCursorRects(for: self)
+        }
+
+        override func resetCursorRects() {
+            super.resetCursorRects()
+            addCursorRect(bounds, cursor: .resizeUpDown)
+        }
+
+        // Rebuild the tracking area whenever the handle's geometry changes (the
+        // divider moves continuously while resizing), so the cursor region always
+        // matches the live bounds. `.inVisibleRect` keeps it pinned to `bounds`.
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: .zero,
+                    options: [.cursorUpdate, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                    owner: self
                 )
+            )
+        }
+
+        override func cursorUpdate(with event: NSEvent) {
+            NSCursor.resizeUpDown.set()
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            onHoverChange?(true)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            guard !isDragging else {
+                return
             }
+            onHoverChange?(false)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            isDragging = true
+            dragStartY = event.locationInWindow.y
+            NSCursor.resizeUpDown.set()
+            onHoverChange?(true)
+            onBegan?()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            // Keep asserting the cursor for the duration of the drag, including
+            // when the pointer runs past a clamp limit and off the handle.
+            NSCursor.resizeUpDown.set()
+            onChanged?(dragStartY - event.locationInWindow.y)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            isDragging = false
+            onEnded?()
+            let location = convert(event.locationInWindow, from: nil)
+            onHoverChange?(bounds.contains(location))
+        }
     }
 }
 
@@ -2463,32 +2841,26 @@ private struct ToolbarIconButton: View {
     var isDisabled = false
     let action: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
         Button(action: action) {
-            buttonSurface(
+            KairosIconView(
+                icon: icon,
+                color: isDisabled
+                    ? DesktopShellTokens.textTertiary.opacity(0.5)
+                    : DesktopShellTokens.actionPrimary
+            )
+            .frame(
+                width: DesktopShellTokens.iconSize,
+                height: DesktopShellTokens.iconSize
+            )
+        }
+        .buttonStyle(
+            SurfaceButtonStyle(
                 kind: .ghost,
-                isHovered: isHovered,
                 isDisabled: isDisabled
-            ) {
-                KairosIconView(
-                    icon: icon,
-                    color: isDisabled
-                        ? DesktopShellTokens.textTertiary.opacity(0.5)
-                        : DesktopShellTokens.actionPrimary
-                )
-                .frame(
-                    width: DesktopShellTokens.iconSize,
-                    height: DesktopShellTokens.iconSize
-                )
-            }
-        }
-        .buttonStyle(.plain)
+            )
+        )
         .disabled(isDisabled)
-        .onHover { hovering in
-            isHovered = hovering
-        }
     }
 }
 
@@ -2498,18 +2870,21 @@ private struct PowerIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            buttonSurface(kind: .filled, isActive: isOn) {
-                KairosIconView(
-                    icon: .power,
-                    color: DesktopShellTokens.actionPrimary
-                )
-                .frame(
-                    width: DesktopShellTokens.iconSize,
-                    height: DesktopShellTokens.iconSize
-                )
-            }
+            KairosIconView(
+                icon: .power,
+                color: DesktopShellTokens.actionPrimary
+            )
+            .frame(
+                width: DesktopShellTokens.iconSize,
+                height: DesktopShellTokens.iconSize
+            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(
+            SurfaceButtonStyle(
+                kind: .filled,
+                isActive: isOn
+            )
+        )
     }
 }
 
@@ -2518,29 +2893,23 @@ private struct ModeIconButton: View {
     let isSelected: Bool
     let action: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
         Button(action: action) {
-            buttonSurface(
+            KairosIconView(
+                icon: icon,
+                color: DesktopShellTokens.actionPrimary
+            )
+            .frame(
+                width: DesktopShellTokens.iconSize,
+                height: DesktopShellTokens.iconSize
+            )
+        }
+        .buttonStyle(
+            SurfaceButtonStyle(
                 kind: .secondary,
-                isActive: isSelected,
-                isHovered: isHovered
-            ) {
-                KairosIconView(
-                    icon: icon,
-                    color: DesktopShellTokens.actionPrimary
-                )
-                .frame(
-                    width: DesktopShellTokens.iconSize,
-                    height: DesktopShellTokens.iconSize
-                )
-            }
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
-        }
+                isActive: isSelected
+            )
+        )
     }
 }
 
@@ -2548,25 +2917,18 @@ private struct TertiaryIconButton: View {
     let icon: KairosIcon
     let action: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
         Button(action: action) {
-            buttonSurface(kind: .outlined, isHovered: isHovered) {
-                KairosIconView(
-                    icon: icon,
-                    color: DesktopShellTokens.actionPrimary
-                )
-                .frame(
-                    width: DesktopShellTokens.iconSize,
-                    height: DesktopShellTokens.iconSize
-                )
-            }
+            KairosIconView(
+                icon: icon,
+                color: DesktopShellTokens.actionPrimary
+            )
+            .frame(
+                width: DesktopShellTokens.iconSize,
+                height: DesktopShellTokens.iconSize
+            )
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
-        }
+        .buttonStyle(SurfaceButtonStyle(kind: .outlined))
     }
 }
 
@@ -2783,46 +3145,160 @@ private struct RenameableTitle: View {
 }
 
 private struct PresetSelectorButton: View {
-    let title: String
-    let activeSlot: PresetSlot
-    let onSelect: (PresetSlot) -> Void
-    let onSave: (PresetSlot) -> Void
+    let activePreset: StoredPreset
+    let presets: [StoredPreset]
+    let onSelect: (String) -> Void
+    let onSave: () -> Void
+    let onAdd: () -> Void
+    let onRename: (String, String) -> Void
+    let onRemove: (String) -> Void
+
+    @Environment(\.floatingDropdownCoordinator) private var dropdownCoordinator
+    @State private var dropdownID = UUID()
+    @State private var triggerFrame: CGRect = .zero
+    @State private var triggerWidth: CGFloat = 0
 
     var body: some View {
-        Menu {
-            Section("Switch preset") {
-                ForEach(PresetSlot.allCases, id: \.self) { slot in
-                    Button {
-                        onSelect(slot)
-                    } label: {
-                        if slot == activeSlot {
-                            Label(slot.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(slot.displayName)
+        triggerButton
+            .fixedSize(horizontal: true, vertical: true)
+            .captureWidth($triggerWidth)
+            .captureFrame(
+                in: .named(DesktopShellTokens.shellCoordinateSpace),
+                to: $triggerFrame
+            )
+    }
+
+    private var triggerButton: some View {
+        Button(action: toggle) {
+            DropdownTriggerContent(
+                title: activePreset.name,
+                icon: .chevronDown,
+                maxTitleWidth: DesktopShellTokens.ghostButtonTriggerTitleMaxWidth
+            )
+        }
+        .help(activePreset.name)
+        .buttonStyle(SurfaceButtonStyle(kind: .ghost))
+    }
+
+    @ViewBuilder
+    private var popupHeader: some View {
+        PresetMenuItem(
+            title: activePreset.name,
+            showsDisclosure: true,
+            maxTitleWidth: DesktopShellTokens.ghostButtonFoldedHeaderTitleMaxWidth,
+            action: toggle,
+            onRename: activePreset.isDefault ? nil : { nextName in
+                onRename(activePreset.id, nextName)
+            },
+            onRemove: activePreset.isDefault ? nil : {
+                onRemove(activePreset.id)
+                close()
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var popupBody: some View {
+        VStack(
+            alignment: .leading,
+            spacing: DesktopShellTokens.componentGapLG
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: DesktopShellTokens.componentGapXS
+            ) {
+                ForEach(presets, id: \.id) { preset in
+                    PresetMenuItem(
+                        title: preset.name,
+                        maxTitleWidth: DesktopShellTokens.ghostButtonFoldedItemTitleMaxWidth,
+                        fillWidth: true,
+                        action: {
+                            onSelect(preset.id)
+                            close()
+                        },
+                        onRename: preset.isDefault ? nil : { nextName in
+                            onRename(preset.id, nextName)
+                        },
+                        onRemove: preset.isDefault ? nil : {
+                            onRemove(preset.id)
+                            close()
                         }
-                    }
+                    )
                 }
             }
 
-            Section("Save current") {
-                ForEach(PresetSlot.allCases, id: \.self) { slot in
-                    Button("Save to \(slot.displayName)") {
-                        onSave(slot)
-                    }
+            VStack(
+                alignment: .leading,
+                spacing: DesktopShellTokens.componentGapXS
+            ) {
+                Button {
+                    onSave()
+                    close()
+                } label: {
+                    Text("save")
+                        .font(DesktopShellTypography.labelMD)
+                        .foregroundStyle(
+                            DesktopShellTokens.actionPrimary
+                        )
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(
+                    SurfaceButtonStyle(kind: .modalSecondary)
+                )
+
+                Button {
+                    onAdd()
+                    close()
+                } label: {
+                    HStack {
+                        Spacer(minLength: 0)
+                        KairosIconView(
+                            icon: .plus,
+                            color: DesktopShellTokens.actionPrimary
+                        )
+                        .frame(
+                            width: DesktopShellTokens.iconSize,
+                            height: DesktopShellTokens.iconSize
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity)
+                .buttonStyle(
+                    SurfaceButtonStyle(kind: .modalSecondary)
+                )
             }
-        } label: {
-            MenuValueLabel(
-                title: title,
-                icon: .chevronDown,
-                width: 146,
-                style: .ghost
-            )
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
+    }
+
+    private func toggle() {
+        guard let dropdownCoordinator else {
+            return
+        }
+
+        dropdownCoordinator.toggle(
+            sourceID: dropdownID,
+            frame: triggerFrame,
+            style: .ghost,
+            minWidth: resolvedMinWidth
+        ) {
+            popupHeader
+        } scrollableContent: {
+            popupBody
+        }
+    }
+
+    private func close() {
+        dropdownCoordinator?.dismiss()
+    }
+
+    private var resolvedMinWidth: CGFloat? {
+        guard triggerWidth > 0 else {
+            return nil
+        }
+
+        return min(triggerWidth, DesktopShellTokens.ghostButtonMaxWidth)
     }
 }
 
@@ -2830,35 +3306,102 @@ private struct MenuValueButton<Content: View>: View {
     let title: String
     let icon: KairosIcon
     var width: CGFloat?
-    let content: Content
+    var maxTitleWidth: CGFloat?
+    let content: (@escaping () -> Void) -> Content
+
+    @Environment(\.floatingDropdownCoordinator) private var dropdownCoordinator
+    @State private var dropdownID = UUID()
+    @State private var triggerFrame: CGRect = .zero
+    @State private var triggerWidth: CGFloat = 0
 
     init(
         title: String,
         icon: KairosIcon,
         width: CGFloat? = nil,
-        @ViewBuilder content: () -> Content
+        maxTitleWidth: CGFloat? = nil,
+        @ViewBuilder content: @escaping (@escaping () -> Void) -> Content
     ) {
         self.title = title
         self.icon = icon
         self.width = width
-        self.content = content()
+        self.maxTitleWidth = maxTitleWidth
+        self.content = content
     }
 
     var body: some View {
-        Menu {
-            content
-        } label: {
-            MenuValueLabel(
+        triggerButton
+            .captureFrame(
+                in: .named(DesktopShellTokens.shellCoordinateSpace),
+                to: $triggerFrame
+            )
+        // When the title is capped (e.g. long source names), allow horizontal
+        // shrinking so the tail-truncation can take effect; otherwise hug content.
+            .fixedSize(
+                horizontal: width == nil && maxTitleWidth == nil,
+                vertical: true
+            )
+    }
+
+    private var resolvedMinWidth: CGFloat? {
+        width ?? (triggerWidth > 0 ? triggerWidth : nil)
+    }
+
+    private var triggerButton: some View {
+        Button(action: toggle) {
+            DropdownTriggerContent(
                 title: title,
                 icon: icon,
                 width: width,
-                style: .outlined
+                maxTitleWidth: maxTitleWidth
             )
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .buttonStyle(SurfaceButtonStyle(kind: .outlined))
+        .captureWidth($triggerWidth)
+    }
+
+    private var triggerSubButton: some View {
+        Button(action: toggle) {
+            DropdownTriggerContent(
+                title: title,
+                icon: icon,
+                width: width,
+                maxTitleWidth: maxTitleWidth,
+                fillWidth: true
+            )
+        }
+        .buttonStyle(SurfaceButtonStyle(kind: .subButton))
+    }
+
+    @ViewBuilder
+    private var popupContent: some View {
+        VStack(
+            alignment: .leading,
+            spacing: DesktopShellTokens.componentGapXS
+        ) {
+            content(close)
+        }
+        .buttonStyle(SurfaceButtonStyle(kind: .subButton))
+    }
+
+    private func toggle() {
+        guard let dropdownCoordinator else {
+            return
+        }
+
+        dropdownCoordinator.toggle(
+            sourceID: dropdownID,
+            frame: triggerFrame,
+            style: .outlined,
+            minWidth: resolvedMinWidth
+        ) {
+            triggerSubButton
+        } scrollableContent: {
+            popupContent
+        }
+    }
+
+    private func close() {
+        dropdownCoordinator?.dismiss()
     }
 }
 
@@ -3027,28 +3570,26 @@ private struct LatencyControl: View {
     }
 }
 
-private struct MenuValueLabel: View {
-    enum Style {
-        case ghost
-        case outlined
-    }
-
+private struct DropdownTriggerContent: View {
     let title: String
-    let icon: KairosIcon
+    var icon: KairosIcon?
     var width: CGFloat?
-    let style: Style
-    var isDisabled = false
+    var maxTitleWidth: CGFloat?
+    var fillWidth = false
 
     var body: some View {
-        buttonSurface(
-            kind: style == .ghost ? .ghost : .outlined,
-            isDisabled: isDisabled
-        ) {
-            HStack(spacing: DesktopShellTokens.componentGapXS) {
-                Text(title)
-                    .font(DesktopShellTypography.labelMD)
-                    .foregroundStyle(DesktopShellTokens.actionPrimary)
+        HStack(spacing: DesktopShellTokens.componentGapXS) {
+            Text(title)
+                .font(DesktopShellTypography.labelMD)
+                .foregroundStyle(DesktopShellTokens.actionPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(
+                    maxWidth: maxTitleWidth ?? (fillWidth ? .infinity : nil),
+                    alignment: .leading
+                )
 
+            if let icon {
                 KairosIconView(
                     icon: icon,
                     color: DesktopShellTokens.actionPrimary
@@ -3058,9 +3599,266 @@ private struct MenuValueLabel: View {
                     height: DesktopShellTokens.iconSize
                 )
             }
-            // Fixed width when specified (e.g. preset selector = 146 per Figma) so
-            // the trigger never stretches to fill the toolbar; otherwise hug content.
-            .frame(width: width, alignment: .leading)
+        }
+        .frame(maxWidth: fillWidth ? .infinity : nil, alignment: .leading)
+        // Fixed width when specified (e.g. preset selector = 146 per Figma) so
+        // the trigger never stretches to fill the toolbar; otherwise hug content.
+        .frame(width: width, alignment: .leading)
+    }
+}
+
+private struct PresetMenuItem: View {
+    let title: String
+    var showsDisclosure = false
+    var maxTitleWidth: CGFloat? = nil
+    var fillWidth = false
+    let action: () -> Void
+    var onRename: ((String) -> Void)? = nil
+    var onRemove: (() -> Void)? = nil
+
+    @State private var isRenamePresented = false
+    @State private var draftName = ""
+
+    private var supportsContextMenu: Bool {
+        onRename != nil || onRemove != nil
+    }
+
+    var body: some View {
+        if supportsContextMenu {
+            button
+                .contextMenu {
+                    if onRename != nil {
+                        Button("Rename") {
+                            draftName = title
+                            isRenamePresented = true
+                        }
+                    }
+
+                    if let onRemove {
+                        Button("Remove", role: .destructive) {
+                            onRemove()
+                        }
+                    }
+                }
+                .popover(isPresented: $isRenamePresented) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Rename preset")
+                            .font(DesktopShellTypography.titleSM)
+
+                        TextField("Preset name", text: $draftName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 220)
+
+                        HStack {
+                            Spacer()
+                            Button("Cancel") {
+                                isRenamePresented = false
+                            }
+                            Button("Apply") {
+                                let trimmedName = draftName
+                                    .trimmingCharacters(
+                                        in: .whitespacesAndNewlines
+                                    )
+                                if !trimmedName.isEmpty {
+                                    onRename?(trimmedName)
+                                }
+                                isRenamePresented = false
+                            }
+                            .keyboardShortcut(.defaultAction)
+                        }
+                    }
+                    .padding(16)
+                }
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
+        Button(action: action) {
+            DropdownTriggerContent(
+                title: title,
+                icon: showsDisclosure ? .chevronDown : nil,
+                maxTitleWidth: maxTitleWidth,
+                fillWidth: fillWidth
+            )
+        }
+        .help(title)
+        .buttonStyle(SurfaceButtonStyle(kind: .subButton))
+    }
+}
+
+@MainActor
+@Observable
+private final class FloatingDropdownCoordinator {
+    struct Presentation {
+        let sourceID: UUID
+        let frame: CGRect
+        let style: FoldedMenuSurfaceStyle
+        let minWidth: CGFloat?
+        let fixedContent: AnyView
+        let scrollableContent: AnyView
+    }
+
+    var presentation: Presentation?
+
+    func toggle<FixedContent: View, ScrollableContent: View>(
+        sourceID: UUID,
+        frame: CGRect,
+        style: FoldedMenuSurfaceStyle,
+        minWidth: CGFloat? = nil,
+        @ViewBuilder fixedContent: () -> FixedContent,
+        @ViewBuilder scrollableContent: () -> ScrollableContent
+    ) {
+        if presentation?.sourceID == sourceID {
+            dismiss()
+            return
+        }
+
+        presentation = Presentation(
+            sourceID: sourceID,
+            frame: frame,
+            style: style,
+            minWidth: minWidth,
+            fixedContent: AnyView(fixedContent()),
+            scrollableContent: AnyView(scrollableContent())
+        )
+    }
+
+    func dismiss() {
+        presentation = nil
+    }
+}
+
+private struct FloatingDropdownOverlay: View {
+    let presentation: FloatingDropdownCoordinator.Presentation
+    let onDismiss: () -> Void
+
+    @State private var popupSize: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { geometry in
+            let popupInset = presentation.style.surfacePadding
+            let horizontalEdgeInset = DesktopShellTokens.componentGapSM
+            let verticalEdgeInset = popupInset
+            let originY = max(
+                presentation.frame.minY - popupInset,
+                verticalEdgeInset
+            )
+            let availableHeight = max(
+                geometry.size.height - originY - verticalEdgeInset,
+                DesktopShellTokens.controlHeight + (popupInset * 2)
+            )
+            let fallbackWidth = max(
+                presentation.minWidth ?? presentation.frame.width,
+                presentation.frame.width
+            )
+            let popupWidth = max(
+                popupSize.width,
+                fallbackWidth
+            )
+            let maxOriginX = max(
+                horizontalEdgeInset,
+                geometry.size.width - popupWidth - horizontalEdgeInset
+            )
+            let originX = min(
+                max(
+                    presentation.frame.minX - popupInset,
+                    horizontalEdgeInset
+                ),
+                maxOriginX
+            )
+
+            ZStack(alignment: .topLeading) {
+                Color.black
+                    .opacity(0.001)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onDismiss)
+
+                FoldedMenuSurface(
+                    style: presentation.style,
+                    minWidth: presentation.minWidth,
+                    maxHeight: availableHeight
+                ) {
+                    presentation.fixedContent
+                } scrollableContent: {
+                    presentation.scrollableContent
+                }
+                .captureSize($popupSize)
+                .offset(
+                    x: originX,
+                    y: originY
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+private struct DropdownScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct FloatingDropdownCoordinatorKey: EnvironmentKey {
+    static let defaultValue: FloatingDropdownCoordinator? = nil
+}
+
+private extension EnvironmentValues {
+    var floatingDropdownCoordinator: FloatingDropdownCoordinator? {
+        get { self[FloatingDropdownCoordinatorKey.self] }
+        set { self[FloatingDropdownCoordinatorKey.self] = newValue }
+    }
+}
+
+private extension View {
+    func captureSize(_ size: Binding<CGSize>) -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear {
+                        size.wrappedValue = geometry.size
+                    }
+                    .onChange(of: geometry.size) { _, nextSize in
+                        size.wrappedValue = nextSize
+                    }
+            }
+        }
+    }
+
+    func captureWidth(_ width: Binding<CGFloat>) -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear {
+                        width.wrappedValue = geometry.size.width
+                    }
+                    .onChange(of: geometry.size.width) { _, nextWidth in
+                        width.wrappedValue = nextWidth
+                    }
+            }
+        }
+    }
+
+    func captureFrame(
+        in coordinateSpace: CoordinateSpace,
+        to frame: Binding<CGRect>
+    ) -> some View {
+        background {
+            GeometryReader { geometry in
+                let currentFrame = geometry.frame(in: coordinateSpace)
+
+                Color.clear
+                    .onAppear {
+                        frame.wrappedValue = currentFrame
+                    }
+                    .onChange(of: currentFrame) { _, nextFrame in
+                        frame.wrappedValue = nextFrame
+                    }
+            }
         }
     }
 }
@@ -3070,46 +3868,336 @@ private enum ButtonSurfaceKind {
     case filled
     case outlined
     case secondary
+    case modalSecondary
+    case subButton
+}
+
+private struct SurfaceButtonStyle: ButtonStyle {
+    let kind: ButtonSurfaceKind
+    var isActive = false
+    var isDisabled = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        SurfaceButtonStyleBody(
+            kind: kind,
+            isActive: isActive,
+            isPressed: configuration.isPressed,
+            isDisabled: isDisabled,
+            label: configuration.label
+        )
+    }
+}
+
+private struct SurfaceButtonStyleBody<Label: View>: View {
+    let kind: ButtonSurfaceKind
+    let isActive: Bool
+    let isPressed: Bool
+    let isDisabled: Bool
+    let label: Label
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    private var expandsLabel: Bool {
+        switch kind {
+        case .subButton:
+            return true
+        case .ghost, .filled, .outlined, .secondary, .modalSecondary:
+            return false
+        }
+    }
+
+    var body: some View {
+        buttonSurface(
+            kind: kind,
+            isActive: isActive,
+            isHovered: isHovered,
+            isPressed: isPressed,
+            isDisabled: isDisabled || !isEnabled
+        ) {
+            Group {
+                if expandsLabel {
+                    label.frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    label
+                }
+            }
+            .font(DesktopShellTypography.labelMD)
+            .foregroundStyle(DesktopShellTokens.actionPrimary)
+        }
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+private enum FoldedMenuSurfaceStyle {
+    case ghost
+    case outlined
+
+    var surfacePadding: CGFloat {
+        switch self {
+        case .ghost:
+            return DesktopShellTokens.componentGapXS
+        case .outlined:
+            return DesktopShellTokens.componentGapXS
+        }
+    }
+}
+
+private struct FoldedMenuSurface<FixedContent: View, ScrollableContent: View>: View {
+    let style: FoldedMenuSurfaceStyle
+    var minWidth: CGFloat?
+    var maxHeight: CGFloat?
+    let fixedContent: FixedContent
+    let scrollableContent: ScrollableContent
+
+    @State private var fixedContentSize: CGSize = .zero
+    @State private var scrollableContentSize: CGSize = .zero
+    @State private var scrollViewportSize: CGSize = .zero
+    @State private var scrollOffset: CGFloat = 0
+
+    private let scrollCoordinateSpace = "FloatingDropdownScroll"
+
+    init(
+        style: FoldedMenuSurfaceStyle,
+        minWidth: CGFloat? = nil,
+        maxHeight: CGFloat? = nil,
+        @ViewBuilder fixedContent: () -> FixedContent,
+        @ViewBuilder scrollableContent: () -> ScrollableContent
+    ) {
+        self.style = style
+        self.minWidth = minWidth
+        self.maxHeight = maxHeight
+        self.fixedContent = fixedContent()
+        self.scrollableContent = scrollableContent()
+    }
+
+    private var surfaceShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: DesktopShellTokens.radiusSurface,
+            style: .continuous
+        )
+    }
+
+    private var scrollableContentMaxHeight: CGFloat? {
+        guard let maxHeight else {
+            return nil
+        }
+
+        return max(
+            maxHeight
+                - fixedContentSize.height
+                - (style.surfacePadding * 2)
+                - DesktopShellTokens.componentGapXS,
+            0
+        )
+    }
+
+    private var needsScroll: Bool {
+        guard let scrollableContentMaxHeight else {
+            return false
+        }
+
+        return scrollableContentSize.height > scrollableContentMaxHeight + 0.5
+    }
+
+    private var canScrollDown: Bool {
+        guard needsScroll else {
+            return false
+        }
+
+        let remainingScroll = scrollableContentSize.height
+            - scrollViewportSize.height
+            - scrollOffset
+        return remainingScroll > 1
+    }
+
+    @ViewBuilder
+    private var scrollableStack: some View {
+        VStack(alignment: .leading, spacing: DesktopShellTokens.componentGapXS) {
+            scrollableContent
+        }
+    }
+
+    @ViewBuilder
+    private var constrainedScrollableContent: some View {
+        if let scrollableContentMaxHeight, needsScroll {
+            ScrollView(.vertical, showsIndicators: false) {
+                scrollableStack
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear
+                                .onAppear {
+                                    scrollableContentSize = geometry.size
+                                }
+                                .onChange(of: geometry.size) { _, nextSize in
+                                    scrollableContentSize = nextSize
+                                }
+                                .preference(
+                                    key: DropdownScrollOffsetKey.self,
+                                    value: -geometry.frame(
+                                        in: .named(scrollCoordinateSpace)
+                                    ).minY
+                                )
+                        }
+                    }
+            }
+            .coordinateSpace(name: scrollCoordinateSpace)
+            .frame(maxHeight: scrollableContentMaxHeight, alignment: .top)
+            .captureSize($scrollViewportSize)
+            .onPreferenceChange(DropdownScrollOffsetKey.self) { nextOffset in
+                scrollOffset = nextOffset
+            }
+            .overlay(alignment: .bottom) {
+                if canScrollDown {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        LinearGradient(
+                            colors: [
+                                DesktopShellTokens.backgroundModals.opacity(0),
+                                DesktopShellTokens.backgroundModals
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 28)
+                        .overlay(alignment: .bottom) {
+                            KairosIconView(
+                                icon: .chevronDown,
+                                color: DesktopShellTokens.textTertiary
+                            )
+                            .frame(width: 16, height: 16)
+                            .padding(.bottom, DesktopShellTokens.componentGapXS)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+        } else {
+            scrollableStack
+                .captureSize($scrollableContentSize)
+        }
+    }
+
+    @ViewBuilder
+    private var shadowLayers: some View {
+        ForEach(
+            DesktopShellTokens.foldedMenuShadows.indices,
+            id: \.self
+        ) { index in
+            let shadow = DesktopShellTokens.foldedMenuShadows[index]
+            let inset = max(-shadow.spread, 0)
+
+            RoundedRectangle(
+                cornerRadius: max(
+                    DesktopShellTokens.radiusSurface - inset,
+                    0
+                ),
+                style: .continuous
+            )
+            .inset(by: inset)
+            .fill(DesktopShellTokens.backgroundModals)
+            .shadow(
+                color: shadow.color,
+                radius: shadow.radius,
+                x: shadow.x,
+                y: shadow.y
+            )
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesktopShellTokens.componentGapXS) {
+            fixedContent
+                .captureSize($fixedContentSize)
+
+            constrainedScrollableContent
+        }
+        .frame(minWidth: minWidth, alignment: .leading)
+        .padding(style.surfacePadding)
+        .background {
+            surfaceShape
+                .fill(DesktopShellTokens.backgroundModals)
+        }
+        .fixedSize(horizontal: true, vertical: true)
+        .clipShape(surfaceShape)
+        .background {
+            shadowLayers
+        }
+        .overlay {
+            surfaceShape.stroke(
+                DesktopShellTokens.borderStrong,
+                lineWidth: DesktopShellTokens.borderWidth
+            )
+        }
+    }
 }
 
 private func buttonSurface<Content: View>(
     kind: ButtonSurfaceKind,
     isActive: Bool = false,
     isHovered: Bool = false,
+    isPressed: Bool = false,
     isDisabled: Bool = false,
     @ViewBuilder content: () -> Content
 ) -> some View {
     let fillColor: Color
     let borderColor: Color
+    let cornerRadius: CGFloat
 
     switch kind {
     case .ghost:
         // Figma `button/ghost`: the default state has no fill and no border, and
-        // it never adopts the accent/primary fill. The only documented states are
-        // `default` and `folded` (the open menu), so an active toolbar control is
-        // expressed through its icon, not a blue background. Hover gets a subtle
-        // surface tint for feedback only.
-        fillColor = isHovered ? DesktopShellTokens.actionSecondaryHover : Color.clear
+        // it never adopts the accent/primary fill. The folded menu state is
+        // rendered by the surrounding container; the trigger itself only takes
+        // the pressed surface while actively clicking.
+        if isPressed {
+            fillColor = DesktopShellTokens.backgroundSurface
+        } else if isHovered {
+            fillColor = DesktopShellTokens.actionSecondaryHover
+        } else {
+            fillColor = .clear
+        }
         borderColor = .clear
+        cornerRadius = DesktopShellTokens.radiusSurface
     case .filled:
         fillColor = isActive ? DesktopShellTokens.actionAccent : DesktopShellTokens.actionSecondary
         borderColor = .clear
+        cornerRadius = DesktopShellTokens.radiusSurface
     case .outlined:
-        // Figma `button/tertiary` default: transparent fill + 0.5px subtle border.
-        // (The elevated fill belongs to `button/secondary`, not tertiary.)
-        fillColor = isHovered ? DesktopShellTokens.actionSecondaryHover : Color.clear
+        // Figma `button/tertiary` default: transparent fill + 0.5px subtle
+        // border. The folded state is handled by the outer dropdown container.
+        fillColor = (isHovered || isPressed) ? DesktopShellTokens.actionSecondaryHover : .clear
         borderColor = DesktopShellTokens.borderSubtle
+        cornerRadius = DesktopShellTokens.radiusElevated
     case .secondary:
         if isActive {
             fillColor = DesktopShellTokens.actionHighlight
             borderColor = .clear
-        } else if isHovered {
+        } else if isHovered || isPressed {
             fillColor = DesktopShellTokens.actionSecondaryHover
             borderColor = .clear
         } else {
             fillColor = DesktopShellTokens.backgroundElevated
             borderColor = DesktopShellTokens.borderSubtle
         }
+        cornerRadius = DesktopShellTokens.radiusSurface
+    case .modalSecondary:
+        if isActive {
+            fillColor = DesktopShellTokens.actionHighlight
+        } else if isHovered || isPressed {
+            fillColor = DesktopShellTokens.actionSecondaryHover
+        } else {
+            fillColor = DesktopShellTokens.backgroundModalsButton
+        }
+        borderColor = .clear
+        cornerRadius = DesktopShellTokens.radiusElevated
+    case .subButton:
+        fillColor = (isHovered || isPressed) ? DesktopShellTokens.actionSecondaryHover : .clear
+        borderColor = .clear
+        cornerRadius = DesktopShellTokens.radiusElevated
     }
 
     return content()
@@ -3117,19 +4205,26 @@ private func buttonSurface<Content: View>(
         .frame(minHeight: DesktopShellTokens.controlHeight)
         .background(
             RoundedRectangle(
-                cornerRadius: DesktopShellTokens.radiusSurface,
+                cornerRadius: cornerRadius,
                 style: .continuous
             )
             .fill(fillColor.opacity(isDisabled ? 0.45 : 1))
         )
         .overlay(
             RoundedRectangle(
-                cornerRadius: DesktopShellTokens.radiusSurface,
+                cornerRadius: cornerRadius,
                 style: .continuous
             )
             .stroke(
                 borderColor,
-                lineWidth: (kind == .outlined || kind == .secondary) ? DesktopShellTokens.borderWidth : 0
+                lineWidth: {
+                    switch kind {
+                    case .outlined, .secondary, .modalSecondary:
+                        return DesktopShellTokens.borderWidth
+                    case .ghost, .filled, .subButton:
+                        return 0
+                    }
+                }()
             )
         )
 }
@@ -3209,6 +4304,14 @@ private enum DesktopShellTypography {
 }
 
 private enum DesktopShellTokens {
+    struct ShadowLayer {
+        let color: Color
+        let radius: CGFloat
+        let x: CGFloat
+        let y: CGFloat
+        let spread: CGFloat
+    }
+
     // Figma MCP sources:
     // - shell nodes 83:8522, 88:27257, 91:38783
     // - toolbar 108:8183
@@ -3216,20 +4319,47 @@ private enum DesktopShellTokens {
     // - button frames 72:2057, 74:2143, 121:6213, 78:1852
     // - toggle 75:2050
     // - status atoms 108:8044, 108:8650, 231:11155
-    static let backgroundCanvas = Color(hex: 0x0A0A0B)
-    static let backgroundSurface = Color(hex: 0x101012)
-    static let backgroundElevated = Color(hex: 0x16171A)
+    static let backgroundCanvas = Color(hex: 0x09090A)
+    static let backgroundSurface = Color(hex: 0x0F0F10)
+    static let backgroundElevated = Color(hex: 0x141517)
+    static let backgroundModals = Color(hex: 0x1D1E22)
+    static let backgroundModalsButton = Color(hex: 0x24262B)
     static let actionPrimary = Color(hex: 0xF5F7FA)
     static let actionSecondary = Color(hex: 0x24262B)
     static let actionSecondaryHover = Color(hex: 0x2F3238)
-    static let actionAccent = Color(hex: 0x4378B8)
-    static let actionHighlight = Color(hex: 0x4378B8, opacity: 0.5)
+    static let actionAccent = Color(hex: 0xA96A2E)
+    static let actionHighlight = Color(hex: 0x503219)
     static let textSecondary = Color(hex: 0xAEB8C4)
     static let textTertiary = Color(hex: 0x8792A0)
     static let borderSubtle = Color(hex: 0x24262B)
+    static let borderStrong = Color(hex: 0x3D4148)
     static let borderDefault = Color(hex: 0x2F3238)
     static let statusSuccess = Color(hex: 0x43B973)
     static let statusDanger = Color(hex: 0xCA5256)
+    static let shellCoordinateSpace = "DesktopShellCoordinateSpace"
+    static let foldedMenuShadows = [
+        ShadowLayer(
+            color: Color(hex: 0x1D1E22, opacity: 0.1),
+            radius: 4,
+            x: 0,
+            y: 2,
+            spread: 0
+        ),
+        ShadowLayer(
+            color: Color(hex: 0x1D1E22, opacity: 0.15),
+            radius: 15,
+            x: 0,
+            y: 10,
+            spread: -2
+        ),
+        ShadowLayer(
+            color: Color(hex: 0x1D1E22, opacity: 0.1),
+            radius: 6,
+            x: 0,
+            y: 0,
+            spread: 0
+        )
+    ]
 
     static let toolbarHeight: CGFloat = 56
     static let toolbarTimeWidth: CGFloat = 74
@@ -3240,11 +4370,15 @@ private enum DesktopShellTokens {
     static let sidebarOuterWidth: CGFloat = 391
     // Figma `component/panel/*-min-height` tokens — bounds for the vertical
     // Grid/Level resize split.
-    static let gridPanelMinHeight: CGFloat = 560
-    static let levelPanelMinHeight: CGFloat = 280
+    static let gridPanelMinHeight: CGFloat = 128
+    static let levelPanelMinHeight: CGFloat = 200
     // Figma `scroll-bar` thumb: 8 × 120, radius full, color/action/secondary.
     static let scrollThumbWidth: CGFloat = 8
     static let scrollThumbLength: CGFloat = 120
+    // Interactive resize strip between Grid and Level. Wider than the 16px visual
+    // gap so the splitter is comfortable to catch, but kept modest so it does not
+    // swallow taps on the Grid's bottom step row (it sits above both panels).
+    static let resizeDividerHitHeight: CGFloat = 28
     static let controlHeight: CGFloat = 32
     static let iconSize: CGFloat = 24
     static let statusDotSize: CGFloat = 8
@@ -3253,6 +4387,7 @@ private enum DesktopShellTokens {
     static let toggleThumbSize: CGFloat = 20
 
     static let radiusSurface: CGFloat = 8
+    static let radiusElevated: CGFloat = 4
     static let radiusCanvas: CGFloat = 12
     static let borderWidth: CGFloat = 0.5
 
@@ -3267,6 +4402,24 @@ private enum DesktopShellTokens {
     static let layoutGapSM: CGFloat = 8
     static let layoutGapLG: CGFloat = 16
     static let layoutGapXL: CGFloat = 24
+
+    // Figma `component/button/ghost/max-width`.
+    static let ghostButtonMaxWidth: CGFloat = 160
+    static let ghostButtonTriggerTitleMaxWidth: CGFloat =
+        ghostButtonMaxWidth
+        - (componentGapSM * 2)
+        - iconSize
+        - componentGapXS
+    static let ghostButtonFoldedHeaderTitleMaxWidth: CGFloat =
+        ghostButtonMaxWidth
+        - (componentGapXS * 2)
+        - (componentGapSM * 2)
+        - iconSize
+        - componentGapXS
+    static let ghostButtonFoldedItemTitleMaxWidth: CGFloat =
+        ghostButtonMaxWidth
+        - (componentGapXS * 2)
+        - (componentGapSM * 2)
 
     static let latencyFieldWidth: CGFloat = 92
     static let latencyDragSensitivity: Double = 0.02
@@ -3335,32 +4488,29 @@ private enum DesktopShellFormatters {
 
 private extension PresetLibrary {
     mutating func replace(preset: StoredPreset) {
-        guard let index = presets.firstIndex(where: { $0.slot == preset.slot }) else {
+        guard let index = presets.firstIndex(where: { $0.id == preset.id }) else {
             return
         }
 
         presets[index] = preset
     }
 
-    func storedPreset(for slot: PresetSlot) -> StoredPreset? {
-        presets.first(where: { $0.slot == slot })
+    mutating func append(preset: StoredPreset) {
+        presets.append(preset)
+        presets = SettingsDefaults.normalizeStoredPresets(presets)
     }
-}
 
-private extension PresetSlot {
-    var toolbarLabel: String {
-        switch self {
-        case .defaultPreset:
-            return "default preset"
-        case .custom1:
-            return "preset 1"
-        case .custom2:
-            return "preset 2"
-        case .custom3:
-            return "preset 3"
-        case .custom4:
-            return "preset 4"
-        }
+    mutating func removePreset(id: String) {
+        presets.removeAll { $0.id == id }
+        presets = SettingsDefaults.normalizeStoredPresets(presets)
+    }
+
+    func storedPreset(for presetID: String) -> StoredPreset? {
+        presets.first(where: { $0.id == presetID })
+    }
+
+    var defaultPreset: StoredPreset {
+        storedPreset(for: StoredPreset.defaultID) ?? .factoryDefault
     }
 }
 

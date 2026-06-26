@@ -134,7 +134,8 @@ private struct LevelScaleLabelsOverlay: View {
             ZStack(alignment: .topLeading) {
                 ForEach(LevelScaleGuide.bands, id: \.label) { band in
                     Text(band.label)
-                        .font(Font.custom("Inter", size: 14).weight(.medium))
+                        .font(Font.custom("Inter", size: 13).weight(.medium))
+                        .tracking(0.02)
                         .foregroundStyle(labelColor(for: band.db))
                         .frame(
                             width: LevelDesignTokens.labelWidth,
@@ -1355,10 +1356,10 @@ struct LevelResolvedColor: Sendable, Equatable {
 }
 
 private enum LevelDesignTokens {
-    static let backgroundSurface = LevelResolvedColor(red: 16, green: 16, blue: 18)
-    static let meterBackground = LevelResolvedColor(red: 22, green: 23, blue: 26)
+    static let backgroundSurface = LevelResolvedColor(red: 15, green: 15, blue: 16)
+    static let meterBackground = LevelResolvedColor(red: 20, green: 21, blue: 23)
     static let meterScaleLine = LevelResolvedColor(red: 47, green: 50, blue: 56)
-    static let scaleAccent = LevelResolvedColor(red: 67, green: 120, blue: 184)
+    static let scaleAccent = LevelResolvedColor(red: 169, green: 106, blue: 46)
     static let textSecondary = LevelResolvedColor(red: 174, green: 184, blue: 196)
     static let textTertiary = LevelResolvedColor(red: 135, green: 146, blue: 160)
     static let inTarget = LevelResolvedColor(red: 67, green: 185, blue: 115)
@@ -1366,8 +1367,8 @@ private enum LevelDesignTokens {
     // `color/kairos/level-clip` → `primitive/color/red/200` (#361718), solid.
     static let clip = LevelResolvedColor(red: 54, green: 23, blue: 24)
 
-    // `color/kairos/meter-fill-body` → neutral-200 (#24262B), drawn solid.
-    static let meterFillBody = LevelResolvedColor(red: 36, green: 38, blue: 43)
+    // `color/kairos/meter-fill-body` → neutral-150 (#1D1E22), drawn solid.
+    static let meterFillBody = LevelResolvedColor(red: 29, green: 30, blue: 34)
 
     static let radiusCanvas: CGFloat = 12
     static let panelPadding: CGFloat = 16

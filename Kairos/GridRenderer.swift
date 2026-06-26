@@ -208,13 +208,15 @@ private enum GridCanvasRenderer {
                 contentRect: contentRect
             )
 
+            let mode = cycle.stepModes?[safe: stepIndex] ?? cycle.mode
             let visualState = GridStepVisualState.resolve(
                 stepIndex: stepIndex,
+                stepCount: stepCount,
                 activeStepIndex: cycle.activeStepIndex,
                 anticipationRange: cycle.anticipationRange,
-                resetMark: cycle.resetMark
+                resetMark: cycle.resetMark,
+                mode: mode
             )
-            let mode = cycle.stepModes?[safe: stepIndex] ?? cycle.mode
 
             drawStep(
                 in: context,
@@ -333,15 +335,18 @@ private enum GridCanvasRenderer {
 enum GridStepVisualState: Equatable {
     case active
     case inactive
+    case inactiveCheckpoint
     case resetCombined
     case resetGeneral
     case anticipation
 
     static func resolve(
         stepIndex: Int,
+        stepCount: Int,
         activeStepIndex: Int?,
         anticipationRange: Range<Int>?,
-        resetMark: GridResetMark
+        resetMark: GridResetMark,
+        mode: GridRenderFrame.Mode
     ) -> GridStepVisualState {
         if stepIndex == 0 {
             switch resetMark {
@@ -365,6 +370,14 @@ enum GridStepVisualState: Equatable {
             return .active
         }
 
+        if GridInactiveCheckpointSystem.applies(
+            to: stepIndex,
+            stepCount: stepCount,
+            mode: mode
+        ) {
+            return .inactiveCheckpoint
+        }
+
         return .inactive
     }
 
@@ -374,12 +387,51 @@ enum GridStepVisualState: Equatable {
             GridDesignTokens.stepActive
         case .inactive:
             GridDesignTokens.stepInactive
+        case .inactiveCheckpoint:
+            GridDesignTokens.stepInactiveCheckpoint
         case .resetCombined:
             GridDesignTokens.resetCombined
         case .resetGeneral:
             GridDesignTokens.resetGeneral
         case .anticipation:
             GridDesignTokens.anticipation
+        }
+    }
+}
+
+private enum GridInactiveCheckpointSystem {
+    // Figma defines checkpoint emphasis per cycle matrix, including a border-only
+    // exception for 4-step rows.
+    static func applies(
+        to stepIndex: Int,
+        stepCount: Int,
+        mode: GridRenderFrame.Mode
+    ) -> Bool {
+        guard stepIndex >= 0, stepIndex < stepCount else {
+            return false
+        }
+
+        if stepCount == 4 {
+            return mode == .border && stepIndex == 2
+        }
+
+        guard let stride = checkpointStride(for: stepCount) else {
+            return false
+        }
+
+        return stepIndex.isMultiple(of: stride)
+    }
+
+    private static func checkpointStride(for stepCount: Int) -> Int? {
+        switch stepCount {
+        case 8, 16:
+            4
+        case 32:
+            8
+        case 64, 128:
+            16
+        default:
+            nil
         }
     }
 }
@@ -421,9 +473,10 @@ struct GridResolvedColor: Sendable, Equatable {
 }
 
 private enum GridDesignTokens {
-    static let backgroundSurface = GridResolvedColor(red: 16, green: 16, blue: 18)
+    static let backgroundSurface = GridResolvedColor(red: 15, green: 15, blue: 16)
     static let stepActive = GridResolvedColor(red: 245, green: 247, blue: 250)
     static let stepInactive = GridResolvedColor(red: 36, green: 38, blue: 43)
+    static let stepInactiveCheckpoint = GridResolvedColor(red: 47, green: 50, blue: 56)
     static let resetCombined = GridResolvedColor(red: 116, green: 215, blue: 154)
     static let resetGeneral = GridResolvedColor(red: 170, green: 130, blue: 219)
     static let anticipation = GridResolvedColor(red: 233, green: 130, blue: 132)

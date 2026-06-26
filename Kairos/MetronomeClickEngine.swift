@@ -217,7 +217,7 @@ final class MetronomeClickEngine {
     private static func makeClickBuffer(
         format: AVAudioFormat
     ) -> AVAudioPCMBuffer? {
-        let durationSeconds = 0.045
+        let durationSeconds = 0.018
         let frameCount = AVAudioFrameCount(
             max((format.sampleRate * durationSeconds).rounded(), 1)
         )
@@ -234,18 +234,33 @@ final class MetronomeClickEngine {
         buffer.frameLength = frameCount
         let channelCount = Int(format.channelCount)
         let sampleRate = format.sampleRate
+        var clickPhase = 0.0
+        var lowpassedNoise = 0.0
 
+        // Pure click transient: no resonant body, almost flat pitch, no echo tail.
         for frame in 0 ..< Int(frameCount) {
             let time = Double(frame) / sampleRate
-            let envelope = exp(-time * 85.0)
-            let tone = sin(2.0 * .pi * 2_400.0 * time)
-            let overtone = 0.38 * sin(2.0 * .pi * 3_600.0 * time)
-            let transient = 0.22 * sin(2.0 * .pi * 5_200.0 * time)
-            let attack = min(time / 0.001, 1.0)
-            let sample = Float((tone + overtone + transient) * envelope * attack * 0.72)
+            let attack = min(time / 0.00008, 1.0)
+
+            let clickFrequency = 3_200.0 + (140.0 * exp(-time * 650.0))
+            clickPhase += (2.0 * .pi * clickFrequency) / sampleRate
+            let tone = sin(clickPhase) * exp(-time * 420.0)
+            let edge = 0.14 * sin(2.0 * .pi * 5_400.0 * time) * exp(-time * 760.0)
+
+            let noiseSeed = sin((Double(frame) * 12.9898) + 78.233) * 43_758.5453
+            let whiteNoise = ((noiseSeed - floor(noiseSeed)) * 2.0) - 1.0
+            lowpassedNoise += (whiteNoise - lowpassedNoise) * 0.22
+            let clickNoise = (whiteNoise - lowpassedNoise) * exp(-time * 900.0)
+
+            let sample = tanh(
+                ((tone * 0.78) + edge + (clickNoise * 0.34))
+                    * attack
+                    * 1.7
+            ) * 0.52
+            let clampedSample = max(-0.95, min(0.95, Float(sample)))
 
             for channel in 0 ..< channelCount {
-                channelData[channel][frame] = sample
+                channelData[channel][frame] = clampedSample
             }
         }
 
