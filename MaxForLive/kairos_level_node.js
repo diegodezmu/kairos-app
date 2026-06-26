@@ -11,6 +11,19 @@ socket.bind(() => {
   socket.setBroadcast(true);
 });
 
+function decodeName(value) {
+  const raw = value === undefined || value === null ? "" : String(value);
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch (error) {
+    decoded = raw;
+  }
+
+  decoded = decoded.trim();
+  return decoded.length ? decoded : "Track";
+}
+
 function clamp01(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
@@ -79,7 +92,7 @@ maxApi.addHandler("rms", (sourceSlot, sourceName, rmsL, rmsR, peakL, peakR, send
     type: "kairos.level.v1",
     sourceSlot: parsedSourceSlot,
     senderId: String(senderId || `kairos-level-${parsedSourceSlot}`),
-    sourceName: String(sourceName || "Track"),
+    sourceName: decodeName(sourceName),
     rmsL: clamp01(rmsL),
     rmsR: clamp01(rmsR),
     peakL: clamp01(peakL),

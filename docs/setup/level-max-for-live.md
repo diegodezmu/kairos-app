@@ -25,12 +25,17 @@ Esta es la arquitectura principal de `Level` en KAIROS.
 1. El dispositivo `KAIROSLevelSender.amxd` se inserta en una pista, grupo, return o bus de Ableton.
 2. Para correspondencia exacta de `RMS`, el dispositivo debe quedar en la ultima
    posicion de la cadena del canal.
-3. El patch obtiene `RMS` y `peak` locales de la señal entrante.
-4. La instancia integra el `RMS` sobre ~`300 ms` y lo ajusta al estado
-   post-fader de la pista.
-5. La instancia usa `output_meter_left/right` de Live como referencia de `peak`
-   post-fader para que el techo y el clipping coincidan con Ableton.
-6. KAIROS detecta las fuentes activas por `sourceSlot`.
+3. El patch obtiene `RMS` (`average~ ... rms`) y `peak` (`peakamp~`) locales de la
+   señal entrante, en amplitud lineal verdadera.
+4. La instancia integra el `RMS` sobre ~`300 ms` y escala tanto `RMS` como `peak`
+   al estado post-fader multiplicando por la ganancia del fader (`display_value`
+   del volumen). Todo permanece en amplitud lineal `0..1`, así que el `20*log10`
+   de KAIROS produce dBFS coherentes con el canal.
+5. **No** se usa `output_meter_left/right` de Live: ese valor es un medidor de GUI
+   warpeado (no amplitud lineal) y convertirlo con `20*log10` desalineaba el dB.
+   Evitarlo también elimina la carga de GUI de sondear esos medidores.
+6. KAIROS detecta las fuentes activas por `sourceSlot`, derivado de la posición
+   real de la pista, con el nombre real de la pista como `sourceName`.
 7. La sidebar de `Level` muestra el estado del receptor, las fuentes activas y posibles conflictos.
 8. Cada lane de `Level` puede seleccionar su `Input source`.
 9. Esa asignacion se persiste en presets.
@@ -41,12 +46,23 @@ La asignacion persistente no usa `senderId`, porque ese valor es efimero y puede
 
 La clave estable es:
 
-- `sourceSlot`: numero logico elegido por el usuario dentro de cada instancia del dispositivo.
+- `sourceSlot`: derivado automaticamente de la posicion real del canal en Live
+  (audio/grupo → `1, 2, 3…`; return → `1001+`; master → `2001`).
+- `sourceName`: el nombre real de la pista, leido en vivo de la Live API.
+
+Asi el **source channel** que muestra KAIROS corresponde 1:1 con el canal de
+Ableton sin numerar ni nombrar nada a mano.
+
+Respaldo:
+
+- Si la Live API no esta disponible, el dispositivo usa el numero (`live.numbox`)
+  y el nombre (`source …`) manuales como fallback.
 
 Regla operativa:
 
-- Cada dispositivo debe tener un `sourceSlot` unico.
-- Si dos dispositivos emiten el mismo `sourceSlot`, KAIROS lo marca como conflicto.
+- Cada canal de Ableton produce un `sourceSlot` unico por construccion.
+- Si dos dispositivos viven en la **misma** pista emiten el mismo `sourceSlot`, y
+  KAIROS lo marca como conflicto.
 
 ## Compatibilidad con Grid
 
@@ -61,13 +77,16 @@ Eso permite usar el experimento previo como referencia y como fallback de valida
 
 1. Abre KAIROS.
 2. Activa uno o varios lanes en la seccion `Level`.
-3. En Ableton, inserta `KAIROSLevelSender.amxd` en varias pistas o buses.
-4. Asigna `Source 1`, `Source 2`, `Source 3`, etc. sin repetir numeros.
-5. Reproduce audio en esas pistas.
-6. En KAIROS, confirma en la sidebar:
+3. En Ableton, inserta `KAIROSLevelSender.amxd` (ultimo en la cadena) en varias
+   pistas o buses. No numeres ni nombres nada: cada instancia se identifica sola.
+4. Reproduce audio en esas pistas.
+5. En KAIROS, confirma en la sidebar:
    - `Receiving N sources on UDP 51515.`
-   - lista de fuentes activas detectadas
-   - ausencia de conflictos
+   - cada fuente activa aparece con el nombre real de su pista de Ableton
+   - ausencia de conflictos (salvo dos instancias en la misma pista)
+6. Compara el dB de KAIROS con el medidor del canal de Ableton: el `peak` debe
+   seguir al medidor (mismo techo/clip), y el `RMS` quedara por debajo del peak
+   por el factor de cresta del material (comportamiento esperado).
 7. En cada lane, elige `Input source`.
 8. Verifica que el lane responde a la fuente asignada, no al numero del lane.
    - Ejemplo: lane 1 -> source 4

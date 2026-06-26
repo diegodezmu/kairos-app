@@ -2,41 +2,52 @@ autowatch = 1;
 inlets = 4;
 outlets = 2;
 
+// Manual fallbacks (legacy). Identity is now auto-derived from the Live track
+// whenever the Live API is reachable; these only apply if the track cannot be
+// resolved (e.g. the device is loaded outside a Live track context).
 var sourceSlot = 1;
 var sourceName = "Track";
 var enabled = 1;
 var senderId = "kairos-" + Math.floor(Math.random() * 1000000000).toString(16);
 var packetCount = 0;
 
-// --- Post-fader level via Live API -----------------------------------------
-// `plugin~`/`peakamp~` only see the signal at the device's position in the
-// chain, i.e. BEFORE the track mixer fader, so moving the track volume did not
-// move the KAIROS meter. We therefore keep the patch's true audio analysis
-// (RMS/peak), but align it to the track's post-fader state using Live's mixer
-// gain plus the post-fader output meter. This keeps the KAIROS RMS reading tied
-// to the same post-fader channel state as Ableton instead of substituting peak
-// for RMS.
+// --- Identity + post-fader level via Live API ------------------------------
+// `plugin~`/`peakamp~`/`average~` see the signal at the device's position in the
+// chain, i.e. BEFORE the track mixer fader. We therefore measure true linear
+// RMS/peak amplitude in the patch and scale it to post-fader by Live's mixer
+// gain, so EVERYTHING we send stays in a single, consistent unit system: linear
+// amplitude 0..1, which KAIROS converts to dBFS with 20*log10. We intentionally
+// no longer substitute Live's `output_meter_*` for the peak: that value is a
+// warped GUI-meter reading (not linear amplitude), so converting it with
+// 20*log10 produced systematic dB error and mixed units with the RMS path.
+//
+// Identity (sourceSlot + sourceName) is derived from the track itself so the
+// "source channel" shown in KAIROS always matches the real Ableton channel,
+// instead of relying on a number/name the user must type by hand on each device.
 var trackApi = null;
 var deviceApi = null;
 var volumeApi = null;
 var liveActive = false;
-var meterPoller = null;
-var latestPostFaderMeter = null;
-var postMeterFreshnessMilliseconds = 125;
+var statePoller = null;
+var latestTrackState = null; // { gain, name, slot, timestampMs }
+// Mixer gain / name / slot are cheap Live API gets (no GUI-expensive meters),
+// so we can refresh them at a comfortable rate and keep them fresh between the
+// audio-driven level packets.
+var trackStateFreshnessMilliseconds = 500;
 var rmsIntegrationWindowMilliseconds = 300;
 var rmsHistory = [];
 var warnedNonTerminalPlacement = false;
 
 function loadbang() {
-    initLiveMeter();
-    outlet(1, "KAIROS Level sender loaded. Source " + sourceSlot + ", enabled " + enabled + ".");
+    initLivePoll();
+    outlet(1, "KAIROS Level sender loaded.");
 }
 
-function initLiveMeter() {
+function initLivePoll() {
     try {
-        meterPoller = new Task(pollMeter, this);
-        meterPoller.interval = 33; // ~30 Hz, matches the visual meter cadence
-        meterPoller.repeat();
+        statePoller = new Task(refreshTrackState, this);
+        statePoller.interval = 100; // cheap gets only; no output_meter polling
+        statePoller.repeat();
     } catch (e) {
         liveActive = false;
     }
@@ -97,18 +108,10 @@ function warnIfDeviceIsNotLastInChain() {
     }
 }
 
-function readMeter(property) {
-    var raw = trackApi.get(property);
-    if (raw === undefined || raw === null) {
-        return null;
-    }
-    // LiveAPI.get may return a bare number or a single-element array.
-    var value = (raw instanceof Array) ? raw[0] : raw;
-    value = Number(value);
-    return isNaN(value) ? null : value;
-}
-
-function pollMeter() {
+// Poll cheap track state: mixer gain (for post-fader scaling) plus the real
+// track name and a stable slot derived from the channel's position. No
+// GUI-expensive output meters are read here.
+function refreshTrackState() {
     if (!enabled) {
         return;
     }
@@ -116,26 +119,111 @@ function pollMeter() {
     if (trackApi === null || !trackApi.id || parseInt(trackApi.id, 10) === 0) {
         if (!resolveTrack()) {
             liveActive = false;
+            latestTrackState = null;
             return;
         }
     }
 
-    var left = readMeter("output_meter_left");
-    var right = readMeter("output_meter_right");
+    var gain = readCurrentMixerGain();
+    var name = readTrackName();
+    var slot = computeAutoSlot();
 
-    if (left === null || right === null) {
+    if (gain === null && name === null && slot === null) {
         liveActive = false;
-        latestPostFaderMeter = null;
+        latestTrackState = null;
         return;
     }
 
     liveActive = true;
-    latestPostFaderMeter = {
-        left: clamp(left),
-        right: clamp(right),
-        timestampMs: Date.now(),
-        mixerGain: readCurrentMixerGain()
+    latestTrackState = {
+        gain: gain,
+        name: name,
+        slot: slot,
+        timestampMs: Date.now()
     };
+}
+
+function readTrackName() {
+    if (trackApi === null) {
+        return null;
+    }
+
+    var raw = null;
+    try {
+        raw = trackApi.get("name");
+    } catch (e) {
+        return null;
+    }
+
+    var text = liveApiText(raw);
+    if (text === null) {
+        return null;
+    }
+
+    text = text.trim();
+    return text.length ? text : null;
+}
+
+// Derive a stable, collision-free numeric slot from the channel's real position
+// so the "source channel" in KAIROS maps 1:1 to the Ableton channel without the
+// user numbering devices by hand:
+//   audio/group tracks -> 1-based index            (tracks 0 -> 1, tracks 1 -> 2, ...)
+//   return tracks      -> 1001-based index
+//   master track       -> 2001
+function computeAutoSlot() {
+    if (trackApi === null) {
+        return null;
+    }
+
+    var path = String(trackApi.unquotedpath || trackApi.path || "");
+    var match;
+
+    if ((match = path.match(/return_tracks\s+(\d+)/)) !== null) {
+        return 1001 + parseInt(match[1], 10);
+    }
+
+    if (path.indexOf("master_track") !== -1) {
+        return 2001;
+    }
+
+    if ((match = path.match(/tracks\s+(\d+)/)) !== null) {
+        return parseInt(match[1], 10) + 1;
+    }
+
+    return null;
+}
+
+function freshTrackState() {
+    if (latestTrackState === null) {
+        return null;
+    }
+
+    return (Date.now() - latestTrackState.timestampMs) <= trackStateFreshnessMilliseconds
+        ? latestTrackState
+        : null;
+}
+
+function currentGain() {
+    var state = freshTrackState();
+    return state ? state.gain : null;
+}
+
+function effectiveSlot() {
+    var state = freshTrackState();
+    if (state !== null && state.slot !== null && state.slot >= 1) {
+        return state.slot;
+    }
+
+    return sourceSlot;
+}
+
+function effectiveName() {
+    var state = freshTrackState();
+    if (state !== null && state.name) {
+        return state.name;
+    }
+
+    return sourceName;
 }
 
 function msg_int(value) {
@@ -176,63 +264,35 @@ function id(value) {
     senderId = String(value);
 }
 
+// Convert the patch's pre-fader linear RMS/peak to post-fader linear amplitude
+// by applying the current mixer gain, then integrate the RMS over ~300 ms.
+// Everything stays in linear amplitude 0..1 so KAIROS's 20*log10 is exact and
+// rms/peak share the same unit system.
 function resolvePostFaderLevels(values) {
     if (values.length < 4) {
         return values;
     }
 
-    var prefaderRMSLeft = clamp(values[0]);
-    var prefaderRMSRight = clamp(values[1]);
-    var prefaderPeakLeft = clamp(values[2]);
-    var prefaderPeakRight = clamp(values[3]);
+    var rmsLeft = clamp(values[0]);
+    var rmsRight = clamp(values[1]);
+    var peakLeft = clamp(values[2]);
+    var peakRight = clamp(values[3]);
 
-    var postRMSLeft = prefaderRMSLeft;
-    var postRMSRight = prefaderRMSRight;
-    var postPeakLeft = prefaderPeakLeft;
-    var postPeakRight = prefaderPeakRight;
-
-    if (hasFreshPostFaderMeter()) {
-        var mixerGain = latestPostFaderMeter.mixerGain;
-        postPeakLeft = latestPostFaderMeter.left;
-        postPeakRight = latestPostFaderMeter.right;
-
-        if (mixerGain !== null) {
-            postRMSLeft = prefaderRMSLeft * mixerGain;
-            postRMSRight = prefaderRMSRight * mixerGain;
-        } else {
-            postRMSLeft = scaledPostFaderRMS(prefaderRMSLeft, prefaderPeakLeft, postPeakLeft);
-            postRMSRight = scaledPostFaderRMS(prefaderRMSRight, prefaderPeakRight, postPeakRight);
-        }
-
-        // The post-fader RMS cannot exceed the current post-fader peak shown by Live.
-        postRMSLeft = Math.min(postRMSLeft, postPeakLeft);
-        postRMSRight = Math.min(postRMSRight, postPeakRight);
+    var gain = currentGain();
+    if (gain !== null) {
+        rmsLeft = clamp(rmsLeft * gain);
+        rmsRight = clamp(rmsRight * gain);
+        peakLeft = clamp(peakLeft * gain);
+        peakRight = clamp(peakRight * gain);
     }
 
-    var integrated = integrateRMS(postRMSLeft, postRMSRight, Date.now());
+    var integrated = integrateRMS(rmsLeft, rmsRight, Date.now());
     return [
         clamp(integrated.left),
         clamp(integrated.right),
-        clamp(postPeakLeft),
-        clamp(postPeakRight)
+        clamp(peakLeft),
+        clamp(peakRight)
     ];
-}
-
-function hasFreshPostFaderMeter() {
-    return latestPostFaderMeter !== null &&
-        (Date.now() - latestPostFaderMeter.timestampMs) <= postMeterFreshnessMilliseconds;
-}
-
-function scaledPostFaderRMS(prefaderRMS, prefaderPeak, postPeak) {
-    var rms = clamp(prefaderRMS);
-    var peak = clamp(prefaderPeak);
-    var outputPeak = clamp(postPeak);
-
-    if (rms <= 0 || peak <= 0 || outputPeak <= 0) {
-        return 0;
-    }
-
-    return clamp(rms * (outputPeak / peak));
 }
 
 function integrateRMS(rmsLeft, rmsRight, timestampMs) {
@@ -269,6 +329,18 @@ function integrateRMS(rmsLeft, rmsRight, timestampMs) {
 function readCurrentMixerGain() {
     if (volumeApi === null || !volumeApi.id || parseInt(volumeApi.id, 10) === 0) {
         return null;
+    }
+
+    // Prefer the GUI-facing numeric dB value when Live exposes it. This avoids
+    // locale/string parsing edge cases and keeps the post-fader correction
+    // stable across Live language/settings changes.
+    var displayValue = readLiveApiNumber(volumeApi, "display_value");
+    if (displayValue !== null) {
+        if (!isFinite(displayValue)) {
+            return displayValue < 0 ? 0 : null;
+        }
+
+        return Math.pow(10, displayValue / 20);
     }
 
     var currentValue = readLiveApiNumber(volumeApi, "value");
@@ -359,7 +431,7 @@ function parseDecibels(text) {
     }
 
     var normalized = String(text)
-        .replace(/\u2212/g, "-")
+        .replace(/−/g, "-")
         .replace(/,/g, ".")
         .trim()
         .toLowerCase();
@@ -377,20 +449,21 @@ function sendLevels(values) {
         return;
     }
 
-    if (sourceSlot < 1) {
-        outlet(1, "KAIROS Level source must be 1 or higher. Not sending.");
+    if (values.length < 4) {
         return;
     }
 
-    if (values.length < 4) {
+    var slot = effectiveSlot();
+    if (slot < 1) {
+        outlet(1, "KAIROS Level source must be 1 or higher. Not sending.");
         return;
     }
 
     var packet = {
         type: "kairos.level.v1",
-        sourceSlot: sourceSlot,
+        sourceSlot: slot,
         senderId: senderId,
-        sourceName: sourceName,
+        sourceName: effectiveName(),
         rmsL: clamp(values[0]),
         rmsR: clamp(values[1]),
         peakL: clamp(values[2]),
@@ -398,10 +471,12 @@ function sendLevels(values) {
         timestampMs: Date.now()
     };
 
+    // The name travels to node.script as a positional atom, so encode it to a
+    // single space/comma-free token. node.script decodes it back before sending.
     outlet(0, [
         "rms",
         packet.sourceSlot,
-        packet.sourceName,
+        encodeURIComponent(packet.sourceName),
         packet.rmsL,
         packet.rmsR,
         packet.peakL,
@@ -412,7 +487,7 @@ function sendLevels(values) {
     packetCount += 1;
 
     if (packetCount === 1 || packetCount % 100 === 0) {
-        outlet(1, "KAIROS Level sent " + packetCount + " packets on source " + sourceSlot + ".");
+        outlet(1, "KAIROS Level sent " + packetCount + " packets on source " + packet.sourceSlot + " (" + packet.sourceName + ").");
     }
 }
 
