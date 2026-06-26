@@ -1,3 +1,6 @@
+> ⚠️ PARCIALMENTE DESACTUALIZADO. Describe decisiones ya superadas (BlackHole, iOS/móvil).
+> Fuente de verdad = el código y `PLAN-AUDITORIA-V1.md`; ver `docs/decisiones-descartadas.md`.
+
 # Kairos — PRD técnico
 
 > Documento de requisitos de producto orientado a implementación. Su objetivo es

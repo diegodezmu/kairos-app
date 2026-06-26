@@ -1,3 +1,6 @@
+> ⚠️ PARCIALMENTE DESACTUALIZADO. Describe decisiones ya superadas (BlackHole, iOS/móvil).
+> Fuente de verdad = el código y `PLAN-AUDITORIA-V1.md`; ver `docs/decisiones-descartadas.md`.
+
 # Kairos — Roadmap de desarrollo (ejecución por agentes Codex)
 
 > Plan de ejecución operativo. Convierte el PRD (`kairos-prd-tecnico.md`) y el sistema
