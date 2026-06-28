@@ -1160,13 +1160,13 @@ final class LevelPreviewDriver {
     private static func channelLabel(for lane: LaneID) -> String {
         switch lane {
         case .one:
-            return "BlackHole 1-2"
+            return "Source 1"
         case .two:
-            return "BlackHole 3-4"
+            return "Source 2"
         case .three:
-            return "BlackHole 5-6"
+            return "Source 3"
         case .four:
-            return "BlackHole 7-8"
+            return "Source 4"
         }
     }
 

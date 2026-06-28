@@ -24,7 +24,7 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
                 millisecondsSinceLastAboveFloor: 0,
                 millisecondsSinceLastClip: 5_000,
                 expectedState: .receiving,
-                expectedDisplayLabel: "BlackHole 1-2"
+                expectedDisplayLabel: "Source 1"
             ),
             .init(
                 name: "silence below floor does not fall to noSignal before 2 seconds",
@@ -35,7 +35,7 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
                 millisecondsSinceLastAboveFloor: 1_500,
                 millisecondsSinceLastClip: 5_000,
                 expectedState: .receiving,
-                expectedDisplayLabel: "BlackHole 1-2"
+                expectedDisplayLabel: "Source 1"
             ),
             .init(
                 name: "silence below floor for 2 seconds becomes noSignal",
@@ -57,7 +57,7 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
                 millisecondsSinceLastAboveFloor: 0,
                 millisecondsSinceLastClip: 5_000,
                 expectedState: .receiving,
-                expectedDisplayLabel: "BlackHole 1-2"
+                expectedDisplayLabel: "Source 1"
             ),
             .init(
                 name: "fresh clip takes precedence immediately",
@@ -90,7 +90,7 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
                 millisecondsSinceLastAboveFloor: 0,
                 millisecondsSinceLastClip: 2_000,
                 expectedState: .receiving,
-                expectedDisplayLabel: "BlackHole 1-2"
+                expectedDisplayLabel: "Source 1"
             ),
             .init(
                 name: "after clip hold expires and silence debounce is also met, state falls to noSignal",
@@ -115,7 +115,7 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
                 clipDetectedNow: row.clipDetectedNow,
                 millisecondsSinceLastAboveFloor: UInt64(row.millisecondsSinceLastAboveFloor),
                 millisecondsSinceLastClip: UInt64(row.millisecondsSinceLastClip),
-                channelLabel: "BlackHole 1-2"
+                channelLabel: "Source 1"
             )
 
             XCTAssertEqual(status.state, row.expectedState, row.name)

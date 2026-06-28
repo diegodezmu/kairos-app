@@ -13,10 +13,10 @@ public struct LaneInputStatus: Sendable, Equatable {
     public var lane: LaneID
     public var state: LaneSignalState
 
-    /// Honest physical/channel caption, e.g. `BlackHole 1-2`.
+    /// Honest source/channel caption, e.g. `Source 1`.
     public var channelLabel: String
 
-    /// State-dependent visible label, e.g. `BlackHole 1-2`, `No signal`, `Clipping`.
+    /// State-dependent visible label, e.g. `Source 1`, `No signal`, `Clipping`.
     public var displayLabel: String
 
     public init(

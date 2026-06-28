@@ -21,7 +21,7 @@ final class DynamicsCorePublicConstructionTests: XCTestCase {
     func testLaneInputStatusMachineIsConstructibleViaFactory() {
         var machine = DynamicsCoreFactory.makeLaneInputStatusMachine(
             lane: .one,
-            channelLabel: "BlackHole 1-2"
+            channelLabel: "Source 1"
         )
 
         XCTAssertEqual(machine.currentStatus.state, .disabled)
@@ -34,7 +34,7 @@ final class DynamicsCorePublicConstructionTests: XCTestCase {
 
         XCTAssertEqual(machine.laneEnabled, true)
         XCTAssertEqual(status.state, .receiving)
-        XCTAssertEqual(status.displayLabel, "BlackHole 1-2")
+        XCTAssertEqual(status.displayLabel, "Source 1")
     }
 
     func testClipDetectorIsConstructibleViaFactory() {

@@ -140,7 +140,7 @@ final class DynamicsCoreRuntimeTests: XCTestCase {
     }
 
     func testLaneInputStatusMachineBootstrapDebounceAndClipPrecedence() {
-        var machine = LaneInputStatusMachine(lane: .one, channelLabel: "BlackHole 1-2")
+        var machine = LaneInputStatusMachine(lane: .one, channelLabel: "Source 1")
 
         XCTAssertEqual(machine.currentStatus.state, .disabled)
         XCTAssertEqual(machine.currentStatus.displayLabel, "")
@@ -182,7 +182,7 @@ final class DynamicsCoreRuntimeTests: XCTestCase {
             atMilliseconds: 5_000
         )
         XCTAssertEqual(receiving.state, .receiving)
-        XCTAssertEqual(receiving.displayLabel, "BlackHole 1-2")
+        XCTAssertEqual(receiving.displayLabel, "Source 1")
 
         machine.setEnabled(false)
         XCTAssertEqual(machine.currentStatus.state, .disabled)
