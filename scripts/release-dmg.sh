@@ -7,15 +7,16 @@
 #
 # Produces: dist/Kairos-<version>.dmg
 #
-# It first tries a BRANDED DMG via `create-dmg` (custom Figma background + the
-# "drag to Applications" layout). create-dmg drives Finder via AppleScript, so it
-# needs an interactive session with Automation permission — run this from Terminal
-# and accept the "control Finder" prompt the first time. If create-dmg is missing
-# or fails (e.g. run non-interactively / over SSH), it falls back to a plain but
-# fully functional DMG via `hdiutil` (app + Applications symlink).
+# Primary path: a BRANDED DMG via `dmgbuild` (custom Figma background + the
+# "drag to Applications" layout). dmgbuild writes the window styling directly,
+# with no Finder/AppleScript, so it works headless and reproducibly.
+#   Install once:  python3 -m pip install dmgbuild
 #
-# Requirements: Xcode, the Ableton Link submodule (auto-initialised below).
-# Optional for branding: `brew install create-dmg`.
+# If dmgbuild is missing or fails, it falls back to a plain but fully functional
+# DMG via `hdiutil` (app + Applications symlink, no background). Both install the
+# same way.
+#
+# Requirements: Xcode 16+, the Ableton Link submodule (auto-initialised below).
 
 set -euo pipefail
 
@@ -25,11 +26,11 @@ cd "$ROOT"
 
 VOLNAME="Kairos"
 DMG="dist/Kairos-${VERSION}.dmg"
-BG="scripts/assets/dmg-background.png"
+BG_SRC="scripts/assets/dmg-background.png"   # 1320x800 Figma export, used as @2x
 DERIVED="build/release"
 APP="${DERIVED}/Build/Products/Release/Kairos.app"
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 echo "==> Ensuring submodules (Ableton Link)"
 git submodule update --init --recursive
@@ -40,40 +41,34 @@ xcodebuild -scheme Kairos -configuration Release -destination 'platform=macOS' \
 
 [ -d "$APP" ] || { echo "ERROR: built app not found at $APP" >&2; exit 1; }
 
-echo "==> Staging app"
-cp -R "$APP" "$STAGE/"
-
 mkdir -p dist
-rm -f "$DMG"
+rm -f "$DMG" dist/rw.*.dmg   # clear previous output + any stray create-dmg temps
 
-build_branded() {
-  command -v create-dmg >/dev/null 2>&1 || return 1
-  [ -f "$BG" ] || return 1
-  create-dmg \
-    --volname "$VOLNAME" \
-    --background "$BG" \
-    --window-pos 200 120 \
-    --window-size 660 400 \
-    --icon-size 128 \
-    --icon "Kairos.app" 165 185 \
-    --hide-extension "Kairos.app" \
-    --app-drop-link 495 185 \
-    --no-internet-enable \
-    "$DMG" "$STAGE"
+make_branded() {
+  command -v dmgbuild >/dev/null 2>&1 || return 1
+  [ -f "$BG_SRC" ] || return 1
+  # Crisp retina background: combine a 1x (660x400) + 2x (1320x800) into a HiDPI TIFF.
+  local bg1x="$TMP/bg-1x.png" bgtiff="$TMP/bg.tiff"
+  sips -z 400 660 "$BG_SRC" --out "$bg1x" >/dev/null
+  tiffutil -cathidpicheck "$bg1x" "$BG_SRC" -out "$bgtiff" >/dev/null 2>&1 || return 1
+  dmgbuild -s scripts/dmg-settings.py -D app="$APP" -D bg="$bgtiff" "$VOLNAME" "$DMG"
 }
 
-build_plain() {
-  ln -sf /Applications "$STAGE/Applications"
-  hdiutil create -volname "$VOLNAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+make_plain() {
+  local stage="$TMP/stage"
+  mkdir -p "$stage"
+  cp -R "$APP" "$stage/"
+  ln -sf /Applications "$stage/Applications"
+  hdiutil create -volname "$VOLNAME" -srcfolder "$stage" -ov -format UDZO "$DMG"
 }
 
-echo "==> Building DMG (branded if create-dmg + Finder Automation are available)"
-if build_branded && [ -f "$DMG" ]; then
-  echo "==> Branded DMG created."
+echo "==> Building DMG"
+if make_branded && [ -f "$DMG" ]; then
+  echo "==> Branded DMG (dmgbuild) created."
 else
-  echo "==> Falling back to a plain functional DMG (hdiutil)."
+  echo "==> dmgbuild unavailable/failed — falling back to a plain DMG (hdiutil)."
   rm -f "$DMG"
-  build_plain
+  make_plain
 fi
 
 echo "==> Done: $DMG"

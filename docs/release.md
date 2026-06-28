@@ -23,19 +23,17 @@ Salida: `dist/Kairos-<versión>.dmg` (esta carpeta está fuera de git).
 
 ### DMG con marca vs. funcional
 
-El script intenta primero un DMG **con marca**: el fondo de Figma ("Drag to install") con la app
-a la izquierda y el atajo a `Applications` a la derecha, vía `create-dmg`. Eso controla Finder por
-AppleScript, así que:
+El script genera un DMG **con marca** (fondo de Figma "Drag to install", con la app a la izquierda
+y el atajo a `Applications` a la derecha) usando `dmgbuild`, que escribe el estilo de la ventana
+directamente, **sin Finder/AppleScript** — funciona headless y de forma reproducible.
 
-- Ejecútalo desde **Terminal de forma interactiva** y acepta el aviso de "controlar Finder" la
-  primera vez.
-- Requiere `brew install create-dmg`.
-- Las posiciones de los iconos (`--icon` / `--app-drop-link` en el script) son un punto de partida;
-  si no cuadran exactamente con la flecha del fondo, ajústalas.
+- Instálalo una vez: `python3 -m pip install dmgbuild`.
+- Las posiciones de los iconos viven en `scripts/dmg-settings.py` (`icon_locations`), ya alineadas
+  con la flecha del fondo; ajústalas ahí si quieres afinar.
+- El fondo se compone en HiDPI (1x + 2x) para verse nítido en pantallas retina.
 
-Si `create-dmg` no está disponible o falla (por ejemplo en un entorno no interactivo), el script
-cae automáticamente a un DMG **funcional** vía `hdiutil` (app + atajo a `Applications`, sin fondo).
-Es igual de instalable.
+Si `dmgbuild` no está disponible o falla, el script cae automáticamente a un DMG **funcional** vía
+`hdiutil` (app + atajo a `Applications`, sin fondo). Es igual de instalable.
 
 ## Firma y Gatekeeper
 
