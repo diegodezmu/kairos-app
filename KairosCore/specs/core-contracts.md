@@ -1,5 +1,10 @@
 # KairosCore Contracts Freeze
 
+> ⚠️ Describe el contrato ORIGINAL de KairosCore. La capa que la app no usa fue **podada**
+> (relojes/`ClockSource`/`OriginLatch`, `DynamicsPublisher`/broadcaster, `RMSPeak`, `DynamicsMeter`,
+> `AudioEngine`). Vigente y en uso: `CycleEngine`, `ResetDetector`, `Offset`, `ClipDetector`,
+> `HistoryBuffer`, `LaneInputStatus`. Ver `docs/decisiones-descartadas.md` y el historial de git.
+
 ## Decisiones tomadas
 
 - Forma pública de muestra: `DynamicsSample` usa campos fijos `lane1...lane4`, no colección dinámica.

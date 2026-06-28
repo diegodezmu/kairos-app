@@ -1,5 +1,10 @@
 # DynamicsCore
 
+> ⚠️ Describe el contrato ORIGINAL. La capa no usada (`DynamicsPublisher`/broadcaster,
+> `LocalConsumer`, `RMSPeak`, `DynamicsMeter`, `AudioEngine`) fue **podada**: Level recibe la
+> telemetría ya calculada por Max for Live (no captura audio). Vigente y en uso: `ClipDetector`,
+> `HistoryBuffer`, `LaneInputStatus`, `DynamicsSample`. Ver `docs/decisiones-descartadas.md`.
+
 ## Contrato
 
 `DynamicsCore` congela el camino audio→dato→consumidor, no el audio real.

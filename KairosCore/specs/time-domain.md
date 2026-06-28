@@ -1,5 +1,10 @@
 # TimeDomain
 
+> ⚠️ Describe el contrato ORIGINAL. La capa de relojes (`ClockSource`, `ClockTimeline`,
+> `InternalClock`, `MIDIClock`, `AbletonLinkClock`, `OriginLatch`) fue **podada**: la app conduce
+> el transporte en su propia capa. Vigente y en uso: `CycleEngine`, `ResetDetector`, `Offset`
+> (+ `CycleTypes`). Ver `docs/decisiones-descartadas.md` y el historial de git.
+
 ## Contrato
 
 `TimeDomain` congela la superficie pública mínima para resolver posición musical, resets y offset sin acoplarse a UI ni al SDK real del reloj.
