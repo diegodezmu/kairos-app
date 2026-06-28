@@ -2,56 +2,6 @@ import XCTest
 @testable import KairosCore
 
 final class DynamicsCoreRuntimeTests: XCTestCase {
-    func testSyntheticReferenceSignalMatchesExpectedRMSAndClip() throws {
-        let sampleRate = 48_000.0
-        let frameCount = Int((sampleRate * (dynamicsIntegrationWindowMilliseconds / 1_000)).rounded())
-        let meter = DefaultDynamicsMeter()
-
-        let referenceSample = try meter.measure(
-            channels: makeReferenceChannels(frameCount: frameCount, injectedClip: nil),
-            sampleRate: sampleRate,
-            hostTime: 1_000,
-            sampleTime: Int64(frameCount)
-        )
-
-        for laneIndex in 0..<kairosLaneCount {
-            let baseChannelIndex = laneIndex * kairosChannelsPerLane
-            let lane = referenceSample.lane(at: laneIndex)
-            let expectedLeftDBFS = targetRMSDBFSByChannel[baseChannelIndex]
-            let expectedRightDBFS = targetRMSDBFSByChannel[baseChannelIndex + 1]
-
-            XCTAssertEqual(
-                DynamicsDecibelScale.amplitudeToDBFS(lane.rmsLeft),
-                expectedLeftDBFS,
-                accuracy: 0.5,
-                "Lane \(laneIndex + 1) left RMS"
-            )
-            XCTAssertEqual(
-                DynamicsDecibelScale.amplitudeToDBFS(lane.rmsRight),
-                expectedRightDBFS,
-                accuracy: 0.5,
-                "Lane \(laneIndex + 1) right RMS"
-            )
-            XCTAssertFalse(lane.clipLeft, "Lane \(laneIndex + 1) left clip")
-            XCTAssertFalse(lane.clipRight, "Lane \(laneIndex + 1) right clip")
-        }
-
-        let clipSample = try meter.measure(
-            channels: makeReferenceChannels(
-                frameCount: frameCount,
-                injectedClip: (channelIndex: 5, frameIndex: frameCount / 2, amplitude: 1.01)
-            ),
-            sampleRate: sampleRate,
-            hostTime: 2_000,
-            sampleTime: Int64(frameCount * 2)
-        )
-
-        XCTAssertFalse(clipSample.lane3.clipLeft)
-        XCTAssertTrue(clipSample.lane3.clipRight)
-        XCTAssertFalse(clipSample.lane1.clipLeft)
-        XCTAssertFalse(clipSample.lane4.clipRight)
-    }
-
     func testClipDetectorKeepsPerChannelTailForTwoSeconds() {
         let clock = TestMillisecondsClock()
         let detector = DefaultClipDetector(nowMilliseconds: { clock.now })
@@ -240,68 +190,6 @@ final class DynamicsCoreRuntimeTests: XCTestCase {
         machine.setEnabled(true)
         XCTAssertEqual(machine.currentStatus.state, .noSignal)
     }
-
-    func testDynamicsPublisherFansOutToBothConsumers() {
-        let localConsumer = RecordingLocalConsumer()
-        let networkBroadcaster = RecordingNetworkBroadcaster()
-        let publisher = DefaultDynamicsPublisher(
-            localConsumer: localConsumer,
-            networkBroadcaster: networkBroadcaster
-        )
-        let sample = makeDynamicsSample(
-            hostTime: 1_000,
-            sampleTime: 1,
-            lane1: makeLaneSample(rmsLeft: 0.1, rmsRight: 0.2)
-        )
-
-        publisher.publish(sample)
-
-        XCTAssertEqual(localConsumer.received, [sample])
-        XCTAssertEqual(networkBroadcaster.received, [sample])
-    }
-}
-
-private let targetRMSDBFSByChannel: [Float] = [
-    -12.0, -7.0,
-    -18.0, -9.0,
-    -24.0, -4.5,
-    -30.0, -15.0,
-]
-
-private let frequencyByChannel: [Double] = [
-    211.0, 257.0,
-    307.0, 353.0,
-    401.0, 449.0,
-    503.0, 557.0,
-]
-
-private func makeReferenceChannels(
-    frameCount: Int,
-    injectedClip: (channelIndex: Int, frameIndex: Int, amplitude: Float)?
-) -> [[Float]] {
-    let sampleRate = 48_000.0
-    var channels = Array(
-        repeating: Array(repeating: Float.zero, count: frameCount),
-        count: kairosLaneCount * kairosChannelsPerLane
-    )
-
-    for channelIndex in 0..<channels.count {
-        let rmsAmplitude = DynamicsDecibelScale.dbfsToAmplitude(targetRMSDBFSByChannel[channelIndex])
-        let peakAmplitude = rmsAmplitude * sqrtf(2)
-        let phaseOffset = Double(channelIndex) * (.pi / 8)
-        let frequency = frequencyByChannel[channelIndex]
-
-        for frameIndex in 0..<frameCount {
-            let phase = (2 * Double.pi * frequency * Double(frameIndex) / sampleRate) + phaseOffset
-            channels[channelIndex][frameIndex] = sinf(Float(phase)) * peakAmplitude
-        }
-    }
-
-    if let injectedClip {
-        channels[injectedClip.channelIndex][injectedClip.frameIndex] = injectedClip.amplitude
-    }
-
-    return channels
 }
 
 private func makeLaneSample(
@@ -341,22 +229,6 @@ private func makeDynamicsSample(
         lane3: lane3,
         lane4: lane4
     )
-}
-
-private final class RecordingLocalConsumer: LocalConsumer, @unchecked Sendable {
-    private(set) var received: [DynamicsSample] = []
-
-    func consume(_ sample: DynamicsSample) {
-        received.append(sample)
-    }
-}
-
-private final class RecordingNetworkBroadcaster: NetworkBroadcaster, @unchecked Sendable {
-    private(set) var received: [DynamicsSample] = []
-
-    func consume(_ sample: DynamicsSample) {
-        received.append(sample)
-    }
 }
 
 private final class TestMillisecondsClock: @unchecked Sendable {

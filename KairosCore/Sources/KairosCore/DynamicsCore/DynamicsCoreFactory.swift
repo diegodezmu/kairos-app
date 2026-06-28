@@ -20,25 +20,7 @@ public enum DynamicsCoreFactory {
         )
     }
 
-    public static func makeDynamicsPublisher(
-        localConsumer: (any LocalConsumer)? = nil,
-        networkBroadcaster: (any NetworkBroadcaster)? = nil
-    ) -> any DynamicsPublisher {
-        DefaultDynamicsPublisher(
-            localConsumer: localConsumer,
-            networkBroadcaster: networkBroadcaster
-        )
-    }
-
     public static func makeClipDetector() -> any ClipDetector {
         DefaultClipDetector()
-    }
-
-    public static func makeRMSPeakMeter() -> any RMSPeakMeasuring {
-        DefaultRMSPeakMeter()
-    }
-
-    public static func makeDynamicsMeter() -> DynamicsMeter {
-        DynamicsMeter()
     }
 }

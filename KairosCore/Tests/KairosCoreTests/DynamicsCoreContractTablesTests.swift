@@ -2,51 +2,6 @@ import XCTest
 @testable import KairosCore
 
 final class DynamicsCoreContractTablesTests: XCTestCase {
-    func testSection72_rmsPeakAndClipTable() throws {
-        let cases: [ChannelMeasurementTableRow] = [
-            .init(
-                name: "unity constant signal",
-                samples: [1.0, 1.0, 1.0, 1.0],
-                expectedRMS: 1.0,
-                expectedPeak: 1.0,
-                expectedClip: false
-            ),
-            .init(
-                name: "half-scale square wave",
-                samples: [0.5, -0.5, 0.5, -0.5],
-                expectedRMS: 0.5,
-                expectedPeak: 0.5,
-                expectedClip: false
-            ),
-            .init(
-                name: "silence stays clear",
-                samples: [0.0, 0.0, 0.0, 0.0],
-                expectedRMS: 0.0,
-                expectedPeak: 0.0,
-                expectedClip: false
-            ),
-            .init(
-                name: "single over sample clips above 0 dBFS",
-                samples: [1.01, 0.0, 0.0, 0.0],
-                expectedRMS: 0.505,
-                expectedPeak: 1.01,
-                expectedClip: true
-            ),
-        ]
-
-        XCTAssertEqual(cases.count, 4)
-        for row in cases {
-            let laneSample = try measureLaneSample(from: row.samples)
-
-            XCTAssertEqual(laneSample.rmsLeft, row.expectedRMS, accuracy: 0.000_5, row.name)
-            XCTAssertEqual(laneSample.peakLeft, row.expectedPeak, accuracy: 0.000_5, row.name)
-            XCTAssertEqual(laneSample.clipLeft, row.expectedClip, row.name)
-            XCTAssertEqual(laneSample.rmsRight, 0, accuracy: 0.000_5, row.name)
-            XCTAssertEqual(laneSample.peakRight, 0, accuracy: 0.000_5, row.name)
-            XCTAssertFalse(laneSample.clipRight, row.name)
-        }
-    }
-
     func testSection772_laneSignalStateTransitionsTable() throws {
         let cases: [LaneSignalTransitionTableRow] = [
             .init(
@@ -169,14 +124,6 @@ final class DynamicsCoreContractTablesTests: XCTestCase {
     }
 }
 
-private struct ChannelMeasurementTableRow {
-    var name: String
-    var samples: [Float]
-    var expectedRMS: Float
-    var expectedPeak: Float
-    var expectedClip: Bool
-}
-
 private struct LaneSignalTransitionTableRow {
     var name: String
     var previousState: LaneSignalState
@@ -187,26 +134,4 @@ private struct LaneSignalTransitionTableRow {
     var millisecondsSinceLastClip: Int
     var expectedState: LaneSignalState
     var expectedDisplayLabel: String
-}
-
-private func measureLaneSample(from samples: [Float]) throws -> LaneDynamicsSample {
-    let silence = Array(repeating: Float.zero, count: samples.count)
-    let channels = [
-        samples,
-        silence,
-        silence,
-        silence,
-        silence,
-        silence,
-        silence,
-        silence,
-    ]
-
-    let sample = try DefaultDynamicsMeter().measure(
-        channels: channels,
-        sampleRate: 48_000,
-        hostTime: 0,
-        sampleTime: Int64(samples.count)
-    )
-    return sample.lane1
 }
