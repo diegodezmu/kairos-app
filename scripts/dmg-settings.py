@@ -28,6 +28,6 @@ show_sidebar = False
 icon_size = 128
 text_size = 13
 icon_locations = {
-    appname: (165, 185),
-    "Applications": (495, 185),
+    appname: (120, 185),
+    "Applications": (540, 185),
 }
